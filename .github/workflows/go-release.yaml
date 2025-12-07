@@ -28,10 +28,6 @@ on:
         required: false
         type: string
         default: ""
-    secrets:
-      homebrew-tap-token:
-        description: "Token for Homebrew tap repository"
-        required: false
 
 jobs:
   test:
@@ -119,7 +115,7 @@ jobs:
         with:
           registry: ${{ inputs.docker-registry }}
           username: ${{ github.actor }}
-          password: ${{ github.token }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create and push tag
         run: |
@@ -135,8 +131,8 @@ jobs:
           version: "~> v2"
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.homebrew-tap-token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       # Rolling release (optional, e.g., v1 for GitHub Actions)
       - name: Delete existing rolling release
@@ -144,14 +140,14 @@ jobs:
         run: |
           gh release delete ${{ inputs.rolling-release-tag }} --cleanup-tag -y || true
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create rolling release
         if: inputs.rolling-release-tag != ''
         uses: ncipollo/release-action@v1
         with:
           name: ${{ inputs.rolling-release-tag }} - ${{ needs.version.outputs.version_tag }}
-          token: ${{ github.token }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ inputs.rolling-release-tag }}
           prerelease: false
           allowUpdates: true
