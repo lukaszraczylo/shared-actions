@@ -29,12 +29,13 @@ on:
         type: string
         default: ""
 
+# Permissions are inherited from the caller workflow via secrets: inherit
+# Caller must declare: contents: write (required), packages: write (if docker-enabled)
+
 jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,8 +52,6 @@ jobs:
     name: Calculate Version
     needs: test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     outputs:
       version: ${{ steps.version_formatted.outputs.version }}
       version_tag: ${{ steps.version_formatted.outputs.version_tag }}
@@ -86,9 +85,6 @@ jobs:
     needs: version
     if: needs.version.outputs.version_tag != ''
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
