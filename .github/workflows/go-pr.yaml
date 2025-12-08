@@ -21,10 +21,9 @@ on:
 #   security-events: write
 
 jobs:
-  pr-checks:
-    name: PR Checks
+  static-analysis:
+    name: Static Analysis
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,11 +36,8 @@ jobs:
           go-version: ${{ inputs.go-version }}
           cache: true
 
-      - name: Install tools
-        run: |
-          go install honnef.co/go/tools/cmd/staticcheck@latest
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
 
       - name: Run go vet
         run: go vet ./...
@@ -49,17 +45,52 @@ jobs:
       - name: Run staticcheck
         run: staticcheck ./...
 
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
       - name: Run TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
           extra_args: --only-verified
 
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
       - name: Run govulncheck
         run: govulncheck ./...
 
+  gosec:
+    name: Gosec SARIF
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
       - name: Run gosec
-        run: |
-          gosec -no-fail -fmt sarif -out gosec-results.sarif ./... || true
+        run: gosec -no-fail -fmt sarif -out gosec-results.sarif ./... || true
 
       - name: Upload gosec SARIF
         if: always() && hashFiles('gosec-results.sarif') != ''
@@ -68,6 +99,47 @@ jobs:
           sarif_file: gosec-results.sarif
           category: gosec
         continue-on-error: true
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  test:
+    name: Tests & Coverage
+    runs-on: ubuntu-latest
+    outputs:
+      coverage: ${{ steps.coverage.outputs.coverage }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
 
       - name: Run tests with coverage
         run: |
@@ -81,12 +153,18 @@ jobs:
           echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
           echo "Total Coverage: $COVERAGE%"
 
+  coverage-report:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs: test
+    if: always() && needs.test.result == 'success'
+    steps:
       - name: Comment coverage on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
-            const coverage = '${{ steps.coverage.outputs.coverage }}';
+            const coverage = '${{ needs.test.outputs.coverage }}';
             const threshold = ${{ inputs.coverage-threshold }};
             const coverageNum = parseFloat(coverage);
             const hasThreshold = threshold > 0;
@@ -129,7 +207,7 @@ jobs:
       - name: Check coverage threshold
         if: inputs.coverage-threshold > 0
         run: |
-          COVERAGE=${{ steps.coverage.outputs.coverage }}
+          COVERAGE=${{ needs.test.outputs.coverage }}
           THRESHOLD=${{ inputs.coverage-threshold }}
           echo "Coverage: $COVERAGE%"
           echo "Threshold: $THRESHOLD%"
@@ -138,27 +216,3 @@ jobs:
             exit 1
           fi
           echo "✅ Coverage $COVERAGE% meets threshold $THRESHOLD%"
-
-  codeql:
-    name: CodeQL Analysis
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ inputs.go-version }}
-          cache: true
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: go
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
