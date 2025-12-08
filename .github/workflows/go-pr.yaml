@@ -8,6 +8,17 @@ on:
         required: false
         type: string
         default: ">=1.24"
+      coverage-threshold:
+        description: "Minimum coverage percentage required (0 to disable)"
+        required: false
+        type: number
+        default: 0
+
+# Caller must declare these permissions:
+# permissions:
+#   contents: read
+#   pull-requests: write
+#   security-events: write
 
 jobs:
   pr-checks:
@@ -26,8 +37,11 @@ jobs:
           go-version: ${{ inputs.go-version }}
           cache: true
 
-      - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+      - name: Install tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
 
       - name: Run go vet
         run: go vet ./...
@@ -40,5 +54,111 @@ jobs:
         with:
           extra_args: --only-verified
 
-      - name: Run tests
-        run: go test -race -cover ./...
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+      - name: Run gosec
+        run: |
+          gosec -no-fail -fmt sarif -out gosec-results.sarif ./... || true
+
+      - name: Upload gosec SARIF
+        if: always() && hashFiles('gosec-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gosec-results.sarif
+          category: gosec
+        continue-on-error: true
+
+      - name: Run tests with coverage
+        run: |
+          go test -race -coverprofile=coverage.out -covermode=atomic ./...
+          go tool cover -func=coverage.out -o=coverage.txt
+
+      - name: Calculate coverage
+        id: coverage
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "Total Coverage: $COVERAGE%"
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const coverage = '${{ steps.coverage.outputs.coverage }}';
+            const threshold = ${{ inputs.coverage-threshold }};
+            const coverageNum = parseFloat(coverage);
+            const hasThreshold = threshold > 0;
+            const meetsThreshold = !hasThreshold || coverageNum >= threshold;
+            const emoji = meetsThreshold ? '✅' : '⚠️';
+            const status = hasThreshold ? (meetsThreshold ? 'meets' : 'below') + ' threshold' : 'reported';
+
+            let body = `## ${emoji} Test Coverage Report\n\n| Metric | Value |\n|--------|-------|\n| **Total Coverage** | ${coverage}% |`;
+            if (hasThreshold) {
+              body += `\n| **Threshold** | ${threshold}% |\n| **Status** | ${emoji} Coverage ${status} |`;
+            }
+
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Test Coverage Report')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                comment_id: botComment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
+      - name: Check coverage threshold
+        if: inputs.coverage-threshold > 0
+        run: |
+          COVERAGE=${{ steps.coverage.outputs.coverage }}
+          THRESHOLD=${{ inputs.coverage-threshold }}
+          echo "Coverage: $COVERAGE%"
+          echo "Threshold: $THRESHOLD%"
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "❌ Coverage $COVERAGE% is below threshold $THRESHOLD%"
+            exit 1
+          fi
+          echo "✅ Coverage $COVERAGE% meets threshold $THRESHOLD%"
+
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
