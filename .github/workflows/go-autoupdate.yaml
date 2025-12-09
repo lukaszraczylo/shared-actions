@@ -13,10 +13,6 @@ on:
         required: false
         type: string
         default: "release.yml"
-    secrets:
-      pat-token:
-        description: "Personal Access Token for creating PRs with verified commits"
-        required: true
 
 jobs:
   autoupdate:
@@ -57,7 +53,7 @@ jobs:
         if: steps.changes.outputs.changes_detected == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ secrets.pat-token }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           commit-message: "Update go.mod and go.sum"
           title: "Update Go dependencies"
           body: |
@@ -72,4 +68,4 @@ jobs:
         if: steps.create-pr.outputs.pull-request-number
         run: gh pr merge --squash --delete-branch --admin "${{ steps.create-pr.outputs.pull-request-number }}"
         env:
-          GH_TOKEN: ${{ secrets.pat-token }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
