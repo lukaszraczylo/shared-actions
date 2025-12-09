@@ -131,14 +131,13 @@ jobs:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       # Rolling release (optional, e.g., v1 for GitHub Actions)
-      - name: Delete existing rolling release
+      - name: Update rolling release tag
         if: inputs.rolling-release-tag != ''
         run: |
-          gh release delete ${{ inputs.rolling-release-tag }} --cleanup-tag -y || true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git tag -f ${{ inputs.rolling-release-tag }}
+          git push origin ${{ inputs.rolling-release-tag }} --force
 
-      - name: Create rolling release
+      - name: Update or create rolling release
         if: inputs.rolling-release-tag != ''
         uses: ncipollo/release-action@v1
         with:
