@@ -46,23 +46,47 @@ runs:
         HOMEBREW_TAP_TOKEN: ${{ inputs.homebrew-tap-token }}
         CGO_ENABLED: ${{ inputs.cgo-enabled }}
 
-    - name: Run GoReleaser (build only for CGO matrix)
+    - name: Run GoReleaser (build + archive for CGO matrix)
       if: inputs.mode == 'split'
       uses: goreleaser/goreleaser-action@v6
       with:
         distribution: goreleaser
         version: "~> v2"
-        args: build --clean --single-target
+        args: release --clean --skip=publish --single-target
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         CGO_ENABLED: ${{ inputs.cgo-enabled }}
+        GORELEASER_CURRENT_TAG: ${{ inputs.version-tag }}
 
-    - name: Run GoReleaser (release with pre-built artifacts)
+    - name: Create GitHub Release and upload artifacts
       if: inputs.mode == 'merge'
-      uses: goreleaser/goreleaser-action@v6
-      with:
-        distribution: goreleaser
-        version: "~> v2"
-        args: release --skip=build
+      shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        VERSION_TAG: ${{ inputs.version-tag }}
+      run: |
+        # List downloaded artifacts
+        echo "=== Downloaded artifacts ==="
+        find dist -type f | head -50
+
+        # Create release if it doesn't exist
+        gh release view "$VERSION_TAG" >/dev/null 2>&1 || \
+          gh release create "$VERSION_TAG" \
+            --title "Release $VERSION_TAG" \
+            --generate-notes
+
+        # Upload all archive files
+        for archive in dist/*.tar.gz dist/*.zip; do
+          if [[ -f "$archive" ]]; then
+            echo "Uploading: $archive"
+            gh release upload "$VERSION_TAG" "$archive" --clobber
+          fi
+        done
+
+        # Upload checksums if present
+        for checksum in dist/checksums*.txt; do
+          if [[ -f "$checksum" ]]; then
+            echo "Uploading: $checksum"
+            gh release upload "$VERSION_TAG" "$checksum" --clobber
+          fi
+        done
