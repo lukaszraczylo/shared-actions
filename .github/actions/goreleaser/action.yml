@@ -46,23 +46,23 @@ runs:
         HOMEBREW_TAP_TOKEN: ${{ inputs.homebrew-tap-token }}
         CGO_ENABLED: ${{ inputs.cgo-enabled }}
 
-    - name: Run GoReleaser (split)
+    - name: Run GoReleaser (build only for CGO matrix)
       if: inputs.mode == 'split'
       uses: goreleaser/goreleaser-action@v6
       with:
         distribution: goreleaser
         version: "~> v2"
-        args: release --clean --split
+        args: build --clean --single-target
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         CGO_ENABLED: ${{ inputs.cgo-enabled }}
 
-    - name: Run GoReleaser (merge)
+    - name: Run GoReleaser (release with pre-built artifacts)
       if: inputs.mode == 'merge'
       uses: goreleaser/goreleaser-action@v6
       with:
         distribution: goreleaser
         version: "~> v2"
-        args: continue --merge
+        args: release --clean
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
