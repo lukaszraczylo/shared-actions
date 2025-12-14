@@ -1,0 +1,68 @@
+name: "GoReleaser"
+description: "Run GoReleaser with optional split/merge for CGO builds"
+
+inputs:
+  version-tag:
+    description: "Version tag to release"
+    required: true
+  mode:
+    description: "Mode: 'full' (single runner), 'split' (matrix build), 'merge' (combine split builds)"
+    required: false
+    default: "full"
+  cgo-enabled:
+    description: "Enable CGO"
+    required: false
+    default: "0"
+  github-token:
+    description: "GitHub token"
+    required: true
+  homebrew-tap-token:
+    description: "Homebrew tap token (optional)"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Create tag
+      shell: bash
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag -a ${{ inputs.version-tag }} -m "Release ${{ inputs.version-tag }}" || true
+        if [[ "${{ inputs.mode }}" != "split" ]]; then
+          git push origin ${{ inputs.version-tag }} || true
+        fi
+
+    - name: Run GoReleaser (full)
+      if: inputs.mode == 'full'
+      uses: goreleaser/goreleaser-action@v6
+      with:
+        distribution: goreleaser
+        version: "~> v2"
+        args: release --clean
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        HOMEBREW_TAP_TOKEN: ${{ inputs.homebrew-tap-token }}
+        CGO_ENABLED: ${{ inputs.cgo-enabled }}
+
+    - name: Run GoReleaser (split)
+      if: inputs.mode == 'split'
+      uses: goreleaser/goreleaser-action@v6
+      with:
+        distribution: goreleaser
+        version: "~> v2"
+        args: release --clean --split
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        CGO_ENABLED: ${{ inputs.cgo-enabled }}
+
+    - name: Run GoReleaser (merge)
+      if: inputs.mode == 'merge'
+      uses: goreleaser/goreleaser-action@v6
+      with:
+        distribution: goreleaser
+        version: "~> v2"
+        args: continue --merge
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}

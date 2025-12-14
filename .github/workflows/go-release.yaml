@@ -7,14 +7,14 @@ on:
         description: "Go version to use"
         required: false
         type: string
-        default: ">=1.21"
+        default: ">=1.24"
       semver-config:
         description: "Path to semver config file"
         required: false
         type: string
         default: "semver.yaml"
       docker-enabled:
-        description: "Enable Docker builds (requires QEMU, Buildx, GHCR login)"
+        description: "Enable Docker builds"
         required: false
         type: boolean
         default: false
@@ -24,13 +24,17 @@ on:
         type: string
         default: "ghcr.io"
       rolling-release-tag:
-        description: "Create a rolling release tag (e.g., 'v1') that always points to latest"
+        description: "Create a rolling release tag (e.g., 'v1')"
         required: false
         type: string
         default: ""
-
-# Permissions are inherited from the caller workflow via secrets: inherit
-# Caller must declare: contents: write (required), packages: write (if docker-enabled)
+    outputs:
+      version:
+        description: "The calculated version (without v prefix)"
+        value: ${{ jobs.version.outputs.version }}
+      version_tag:
+        description: "The version tag (with v prefix)"
+        value: ${{ jobs.version.outputs.version_tag }}
 
 jobs:
   test:
@@ -40,21 +44,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - name: Run tests
+        uses: lukaszraczylo/shared-actions/.github/actions/go-test@main
         with:
           go-version: ${{ inputs.go-version }}
-
-      - name: Run tests
-        run: go test -race -v ./...
 
   version:
     name: Calculate Version
     needs: test
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version_formatted.outputs.version }}
-      version_tag: ${{ steps.version_formatted.outputs.version_tag }}
+      version: ${{ steps.semver.outputs.version }}
+      version_tag: ${{ steps.semver.outputs.version_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,22 +64,9 @@ jobs:
 
       - name: Calculate version
         id: semver
-        uses: lukaszraczylo/semver-generator@v1
+        uses: lukaszraczylo/shared-actions/.github/actions/semver@main
         with:
-          config_file: ${{ inputs.semver-config }}
-          repository_local: true
-
-      - name: Format version
-        id: version_formatted
-        run: |
-          VERSION="${{ steps.semver.outputs.semantic_version }}"
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "version_tag=v${VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Print version
-        run: |
-          echo "Version: ${{ steps.version_formatted.outputs.version }}"
-          echo "Version tag: ${{ steps.version_formatted.outputs.version_tag }}"
+          config-file: ${{ inputs.semver-config }}
 
   release:
     name: Release
@@ -113,41 +101,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create and push tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a ${{ needs.version.outputs.version_tag }} -m "Release ${{ needs.version.outputs.version_tag }}" || true
-          git push origin ${{ needs.version.outputs.version_tag }} || true
-
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: lukaszraczylo/shared-actions/.github/actions/goreleaser@main
         with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          version-tag: ${{ needs.version.outputs.version_tag }}
+          mode: full
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
-      # Rolling release (optional, e.g., v1 for GitHub Actions)
-      - name: Update rolling release tag
+      - name: Rolling release
         if: inputs.rolling-release-tag != ''
-        run: |
-          git tag -f ${{ inputs.rolling-release-tag }}
-          git push origin ${{ inputs.rolling-release-tag }} --force
-
-      - name: Update or create rolling release
-        if: inputs.rolling-release-tag != ''
-        uses: ncipollo/release-action@v1
+        uses: lukaszraczylo/shared-actions/.github/actions/rolling-release@main
         with:
-          name: ${{ inputs.rolling-release-tag }} - ${{ needs.version.outputs.version_tag }}
-          token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ inputs.rolling-release-tag }}
-          prerelease: false
-          allowUpdates: true
-          makeLatest: false
-          body: |
-            Rolling release pointing to version ${{ needs.version.outputs.version_tag }}.
-
-            Use `@${{ inputs.rolling-release-tag }}` in your GitHub Actions workflows for automatic updates.
+          version-tag: ${{ needs.version.outputs.version_tag }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}

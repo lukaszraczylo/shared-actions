@@ -1,0 +1,164 @@
+name: Go Release (CGO)
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: "Go version to use"
+        required: false
+        type: string
+        default: ">=1.24"
+      semver-config:
+        description: "Path to semver config file"
+        required: false
+        type: string
+        default: "semver.yaml"
+      rolling-release-tag:
+        description: "Create a rolling release tag (e.g., 'v1')"
+        required: false
+        type: string
+        default: ""
+      # Node.js support (optional)
+      node-enabled:
+        description: "Enable Node.js for frontend builds"
+        required: false
+        type: boolean
+        default: false
+      node-version:
+        description: "Node.js version to use"
+        required: false
+        type: string
+        default: "20"
+      node-build-script:
+        description: "Shell script to build frontend"
+        required: false
+        type: string
+        default: ""
+      # Platform configuration
+      platforms:
+        description: "JSON array of platforms"
+        required: false
+        type: string
+        default: '[{"os":"macos-13","goos":"darwin","goarch":"amd64","platform":"darwin_amd64"},{"os":"macos-latest","goos":"darwin","goarch":"arm64","platform":"darwin_arm64"},{"os":"ubuntu-latest","goos":"linux","goarch":"amd64","platform":"linux_amd64"},{"os":"windows-latest","goos":"windows","goarch":"amd64","platform":"windows_amd64"}]'
+    outputs:
+      version:
+        description: "The calculated version (without v prefix)"
+        value: ${{ jobs.version.outputs.version }}
+      version_tag:
+        description: "The version tag (with v prefix)"
+        value: ${{ jobs.version.outputs.version_tag }}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run tests
+        uses: lukaszraczylo/shared-actions/.github/actions/go-test@main
+        with:
+          go-version: ${{ inputs.go-version }}
+
+  version:
+    name: Calculate Version
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.semver.outputs.version }}
+      version_tag: ${{ steps.semver.outputs.version_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate version
+        id: semver
+        uses: lukaszraczylo/shared-actions/.github/actions/semver@main
+        with:
+          config-file: ${{ inputs.semver-config }}
+
+  build:
+    name: Build (${{ matrix.platform }})
+    needs: version
+    if: needs.version.outputs.version_tag != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(inputs.platforms) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+
+      - name: Build frontend
+        if: inputs.node-enabled && inputs.node-build-script != ''
+        uses: lukaszraczylo/shared-actions/.github/actions/node-build@main
+        with:
+          node-version: ${{ inputs.node-version }}
+          build-script: ${{ inputs.node-build-script }}
+
+      - name: Run GoReleaser (split)
+        uses: lukaszraczylo/shared-actions/.github/actions/goreleaser@main
+        with:
+          version-tag: ${{ needs.version.outputs.version_tag }}
+          mode: split
+          cgo-enabled: "1"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: dist/*.*
+          retention-days: 1
+
+  release:
+    name: Release
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: release-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Run GoReleaser (merge)
+        uses: lukaszraczylo/shared-actions/.github/actions/goreleaser@main
+        with:
+          version-tag: ${{ needs.version.outputs.version_tag }}
+          mode: merge
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rolling release
+        if: inputs.rolling-release-tag != ''
+        uses: lukaszraczylo/shared-actions/.github/actions/rolling-release@main
+        with:
+          tag: ${{ inputs.rolling-release-tag }}
+          version-tag: ${{ needs.version.outputs.version_tag }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}

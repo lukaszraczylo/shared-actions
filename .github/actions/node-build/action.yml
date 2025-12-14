@@ -1,0 +1,29 @@
+name: "Node.js Build"
+description: "Setup Node.js and run build script"
+
+inputs:
+  node-version:
+    description: "Node.js version to use"
+    required: false
+    default: "20"
+  build-script:
+    description: "Build script to run"
+    required: true
+  cache-dependency-path:
+    description: "Path to package-lock.json for caching"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: "npm"
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Build frontend
+      shell: bash
+      run: ${{ inputs.build-script }}

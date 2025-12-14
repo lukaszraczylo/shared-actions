@@ -1,0 +1,36 @@
+name: "Rolling Release"
+description: "Create or update a rolling release tag"
+
+inputs:
+  tag:
+    description: "Rolling release tag (e.g., 'v1')"
+    required: true
+  version-tag:
+    description: "Current version tag this points to"
+    required: true
+  github-token:
+    description: "GitHub token"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Update rolling release tag
+      shell: bash
+      run: |
+        git tag -f ${{ inputs.tag }}
+        git push origin ${{ inputs.tag }} --force
+
+    - name: Update or create rolling release
+      uses: ncipollo/release-action@v1
+      with:
+        name: ${{ inputs.tag }} - ${{ inputs.version-tag }}
+        token: ${{ inputs.github-token }}
+        tag: ${{ inputs.tag }}
+        prerelease: false
+        allowUpdates: true
+        makeLatest: false
+        body: |
+          Rolling release pointing to version ${{ inputs.version-tag }}.
+
+          Use `@${{ inputs.tag }}` in your GitHub Actions workflows for automatic updates.
