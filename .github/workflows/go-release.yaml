@@ -108,6 +108,8 @@ jobs:
           mode: full
           github-token: ${{ secrets.GITHUB_TOKEN }}
           homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          cosign-key: ${{ secrets.COSIGN_KEY }}
+          cosign-password: ${{ secrets.COSIGN_PASSWORD }}
 
       - name: Rolling release
         if: inputs.rolling-release-tag != ''

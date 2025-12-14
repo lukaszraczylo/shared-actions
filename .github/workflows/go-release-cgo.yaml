@@ -161,6 +161,8 @@ jobs:
           cgo-enabled: "1"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           goreleaser-key: ${{ secrets.GORELEASER_PRO }}
+          cosign-key: ${{ secrets.COSIGN_KEY }}
+          cosign-password: ${{ secrets.COSIGN_PASSWORD }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -201,6 +203,8 @@ jobs:
           mode: merge
           github-token: ${{ secrets.GITHUB_TOKEN }}
           goreleaser-key: ${{ secrets.GORELEASER_PRO }}
+          cosign-key: ${{ secrets.COSIGN_KEY }}
+          cosign-password: ${{ secrets.COSIGN_PASSWORD }}
 
       - name: Rolling release
         if: inputs.rolling-release-tag != ''
