@@ -30,7 +30,22 @@ on:
         type: string
         default: "20"
       node-build-script:
-        description: "Shell script to build frontend"
+        description: "Shell script to build frontend (runs in repo root)"
+        required: false
+        type: string
+        default: ""
+      node-cache-dependency-path:
+        description: "Path to package-lock.json for npm caching"
+        required: false
+        type: string
+        default: "package-lock.json"
+      node-output-path:
+        description: "Path to frontend build output (for artifact upload)"
+        required: false
+        type: string
+        default: ""
+      node-embed-path:
+        description: "Path where frontend should be copied for Go embedding"
         required: false
         type: string
         default: ""
@@ -61,6 +76,32 @@ jobs:
         with:
           go-version: ${{ inputs.go-version }}
 
+  frontend:
+    name: Build Frontend
+    if: inputs.node-enabled && inputs.node-build-script != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+          cache-dependency-path: ${{ inputs.node-cache-dependency-path }}
+
+      - name: Build frontend
+        shell: bash
+        run: ${{ inputs.node-build-script }}
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: ${{ inputs.node-output-path }}
+          retention-days: 1
+
   version:
     name: Calculate Version
     needs: test
@@ -82,8 +123,12 @@ jobs:
 
   build:
     name: Build (${{ matrix.platform }})
-    needs: version
-    if: needs.version.outputs.version_tag != ''
+    needs: [version, frontend]
+    if: |
+      always() &&
+      needs.version.result == 'success' &&
+      needs.version.outputs.version_tag != '' &&
+      (needs.frontend.result == 'success' || needs.frontend.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -101,12 +146,12 @@ jobs:
           go-version: ${{ inputs.go-version }}
           cache: true
 
-      - name: Build frontend
-        if: inputs.node-enabled && inputs.node-build-script != ''
-        uses: lukaszraczylo/shared-actions/.github/actions/node-build@main
+      - name: Download frontend artifact
+        if: inputs.node-enabled && inputs.node-embed-path != ''
+        uses: actions/download-artifact@v4
         with:
-          node-version: ${{ inputs.node-version }}
-          build-script: ${{ inputs.node-build-script }}
+          name: frontend-dist
+          path: ${{ inputs.node-embed-path }}
 
       - name: Run GoReleaser (split)
         uses: lukaszraczylo/shared-actions/.github/actions/goreleaser@main
