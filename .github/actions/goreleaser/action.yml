@@ -63,6 +63,6 @@ runs:
       with:
         distribution: goreleaser
         version: "~> v2"
-        args: release --clean
+        args: release --skip=build
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
