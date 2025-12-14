@@ -16,6 +16,10 @@ inputs:
   github-token:
     description: "GitHub token"
     required: true
+  goreleaser-key:
+    description: "GoReleaser Pro license key (for split/merge)"
+    required: false
+    default: ""
   homebrew-tap-token:
     description: "Homebrew tap token (optional)"
     required: false
@@ -46,47 +50,25 @@ runs:
         HOMEBREW_TAP_TOKEN: ${{ inputs.homebrew-tap-token }}
         CGO_ENABLED: ${{ inputs.cgo-enabled }}
 
-    - name: Run GoReleaser (build + archive for CGO matrix)
+    - name: Run GoReleaser Pro (split)
       if: inputs.mode == 'split'
       uses: goreleaser/goreleaser-action@v6
       with:
-        distribution: goreleaser
+        distribution: goreleaser-pro
         version: "~> v2"
-        args: release --clean --skip=publish --single-target
+        args: release --clean --split
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        GORELEASER_KEY: ${{ inputs.goreleaser-key }}
         CGO_ENABLED: ${{ inputs.cgo-enabled }}
-        GORELEASER_CURRENT_TAG: ${{ inputs.version-tag }}
 
-    - name: Create GitHub Release and upload artifacts
+    - name: Run GoReleaser Pro (merge)
       if: inputs.mode == 'merge'
-      shell: bash
+      uses: goreleaser/goreleaser-action@v6
+      with:
+        distribution: goreleaser-pro
+        version: "~> v2"
+        args: continue --merge
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
-        VERSION_TAG: ${{ inputs.version-tag }}
-      run: |
-        # List downloaded artifacts
-        echo "=== Downloaded artifacts ==="
-        find dist -type f | head -50
-
-        # Create release if it doesn't exist
-        gh release view "$VERSION_TAG" >/dev/null 2>&1 || \
-          gh release create "$VERSION_TAG" \
-            --title "Release $VERSION_TAG" \
-            --generate-notes
-
-        # Upload all archive files
-        for archive in dist/*.tar.gz dist/*.zip; do
-          if [[ -f "$archive" ]]; then
-            echo "Uploading: $archive"
-            gh release upload "$VERSION_TAG" "$archive" --clobber
-          fi
-        done
-
-        # Upload checksums if present
-        for checksum in dist/checksums*.txt; do
-          if [[ -f "$checksum" ]]; then
-            echo "Uploading: $checksum"
-            gh release upload "$VERSION_TAG" "$checksum" --clobber
-          fi
-        done
+        GORELEASER_KEY: ${{ inputs.goreleaser-key }}

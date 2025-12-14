@@ -160,6 +160,7 @@ jobs:
           mode: split
           cgo-enabled: "1"
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          goreleaser-key: ${{ secrets.GORELEASER_PRO }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -199,6 +200,7 @@ jobs:
           version-tag: ${{ needs.version.outputs.version_tag }}
           mode: merge
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          goreleaser-key: ${{ secrets.GORELEASER_PRO }}
 
       - name: Rolling release
         if: inputs.rolling-release-tag != ''
