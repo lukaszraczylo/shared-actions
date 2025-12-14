@@ -50,6 +50,17 @@ runs:
       if: inputs.cosign-key != ''
       uses: sigstore/cosign-installer@v3
 
+    - name: Decode cosign key
+      if: inputs.cosign-key != ''
+      shell: bash
+      env:
+        COSIGN_KEY_BASE64: ${{ inputs.cosign-key }}
+      run: |
+        set +x
+        printenv COSIGN_KEY_BASE64 | base64 -d > /tmp/cosign.key
+        chmod 600 /tmp/cosign.key
+        unset COSIGN_KEY_BASE64
+
     - name: Run GoReleaser (full)
       if: inputs.mode == 'full'
       uses: goreleaser/goreleaser-action@v6
