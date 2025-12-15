@@ -24,14 +24,6 @@ inputs:
     description: "Homebrew tap token (optional)"
     required: false
     default: ""
-  cosign-key:
-    description: "Cosign private key (base64 encoded)"
-    required: false
-    default: ""
-  cosign-password:
-    description: "Cosign private key password"
-    required: false
-    default: ""
 
 runs:
   using: "composite"
@@ -47,19 +39,7 @@ runs:
         fi
 
     - name: Install cosign
-      if: inputs.cosign-key != ''
       uses: sigstore/cosign-installer@v3
-
-    - name: Decode cosign key
-      if: inputs.cosign-key != ''
-      shell: bash
-      env:
-        COSIGN_KEY_BASE64: ${{ inputs.cosign-key }}
-      run: |
-        set +x
-        printenv COSIGN_KEY_BASE64 | base64 -d > /tmp/cosign.key
-        chmod 600 /tmp/cosign.key
-        unset COSIGN_KEY_BASE64
 
     - name: Run GoReleaser (full)
       if: inputs.mode == 'full'
@@ -72,8 +52,6 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         HOMEBREW_TAP_TOKEN: ${{ inputs.homebrew-tap-token }}
         CGO_ENABLED: ${{ inputs.cgo-enabled }}
-        COSIGN_KEY: ${{ inputs.cosign-key }}
-        COSIGN_PASSWORD: ${{ inputs.cosign-password }}
 
     - name: Run GoReleaser Pro (split)
       if: inputs.mode == 'split'
@@ -86,8 +64,6 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GORELEASER_KEY: ${{ inputs.goreleaser-key }}
         CGO_ENABLED: ${{ inputs.cgo-enabled }}
-        COSIGN_KEY: ${{ inputs.cosign-key }}
-        COSIGN_PASSWORD: ${{ inputs.cosign-password }}
 
     - name: Run GoReleaser Pro (merge)
       if: inputs.mode == 'merge'
@@ -99,5 +75,3 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GORELEASER_KEY: ${{ inputs.goreleaser-key }}
-        COSIGN_KEY: ${{ inputs.cosign-key }}
-        COSIGN_PASSWORD: ${{ inputs.cosign-password }}
