@@ -25,6 +25,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Run workflow prepare script
+        run: |
+          if [ -f "./workflow-prepare.sh" ]; then
+            chmod +x ./workflow-prepare.sh
+            ./workflow-prepare.sh
+          fi
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:

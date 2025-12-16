@@ -71,6 +71,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Run workflow prepare script
+        run: |
+          if [ -f "./workflow-prepare.sh" ]; then
+            chmod +x ./workflow-prepare.sh
+            ./workflow-prepare.sh
+          fi
+
       - name: Run tests
         uses: lukaszraczylo/shared-actions/.github/actions/go-test@main
         with:
@@ -83,6 +90,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Run workflow prepare script
+        run: |
+          if [ -f "./workflow-prepare.sh" ]; then
+            chmod +x ./workflow-prepare.sh
+            ./workflow-prepare.sh
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -115,6 +129,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Run workflow prepare script
+        run: |
+          if [ -f "./workflow-prepare.sh" ]; then
+            chmod +x ./workflow-prepare.sh
+            ./workflow-prepare.sh
+          fi
+
       - name: Calculate version
         id: semver
         uses: lukaszraczylo/shared-actions/.github/actions/semver@main
@@ -139,6 +160,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Run workflow prepare script
+        run: |
+          if [ -f "./workflow-prepare.sh" ]; then
+            chmod +x ./workflow-prepare.sh
+            ./workflow-prepare.sh
+          fi
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -182,6 +210,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Run workflow prepare script
+        run: |
+          if [ -f "./workflow-prepare.sh" ]; then
+            chmod +x ./workflow-prepare.sh
+            ./workflow-prepare.sh
+          fi
 
       - name: Setup Go
         uses: actions/setup-go@v5
