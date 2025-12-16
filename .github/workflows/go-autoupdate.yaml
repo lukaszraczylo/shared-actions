@@ -26,6 +26,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run workflow prepare script
+        shell: bash
         run: |
           if [ -f "./workflow-prepare.sh" ]; then
             chmod +x ./workflow-prepare.sh
