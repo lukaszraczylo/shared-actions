@@ -54,7 +54,7 @@ on:
         description: "JSON array of platforms"
         required: false
         type: string
-        default: '[{"os":"macos-15-large","goos":"darwin","goarch":"amd64","platform":"darwin_amd64"},{"os":"macos-latest","goos":"darwin","goarch":"arm64","platform":"darwin_arm64"},{"os":"ubuntu-latest","goos":"linux","goarch":"amd64","platform":"linux_amd64"},{"os":"windows-latest","goos":"windows","goarch":"amd64","platform":"windows_amd64"}]'
+        default: '[{"os":"macos-latest","goos":"darwin","goarch":"arm64","platform":"darwin_arm64"},{"os":"ubuntu-latest","goos":"linux","goarch":"amd64","platform":"linux_amd64"},{"os":"windows-latest","goos":"windows","goarch":"amd64","platform":"windows_amd64"}]'
     outputs:
       version:
         description: "The calculated version (without v prefix)"
