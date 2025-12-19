@@ -76,6 +76,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          lfs: ${{ inputs.lfs }}
 
       - name: Run workflow prepare script
         shell: bash
