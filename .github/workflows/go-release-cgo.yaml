@@ -219,6 +219,10 @@ jobs:
     release:
         name: Release
         needs: [version, build]
+        if: |
+            always() &&
+            needs.version.result == 'success' &&
+            needs.build.result == 'success'
         runs-on: ubuntu-latest
         permissions:
             contents: write
