@@ -267,6 +267,14 @@ jobs:
                   pattern: release-*
                   merge-multiple: true
 
+            - name: Download frontend artifact
+              if: inputs.node-enabled && inputs.node-output-path != ''
+              continue-on-error: true
+              uses: actions/download-artifact@v4
+              with:
+                  name: frontend-dist
+                  path: ${{ inputs.node-output-path }}
+
             - name: List artifacts
               run: ls -la dist/
 
