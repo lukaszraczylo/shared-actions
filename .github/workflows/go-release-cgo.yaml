@@ -91,6 +91,7 @@ jobs:
               uses: lukaszraczylo/shared-actions/.github/actions/go-test@main
               with:
                   go-version: ${{ inputs.go-version }}
+                  build-tags: "fts5"
 
     frontend:
         name: Build Frontend

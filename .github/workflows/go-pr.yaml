@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: false
+      build-tags:
+        description: "Build tags to pass to go test (e.g., 'fts5')"
+        required: false
+        type: string
+        default: ""
 
 # Caller must declare these permissions:
 # permissions:
@@ -253,8 +258,15 @@ jobs:
           cache: true
 
       - name: Run tests with coverage
+        env:
+          CGO_ENABLED: 1
         run: |
-          go test -race -coverprofile=coverage.out -covermode=atomic ./...
+          TAGS="${{ inputs.build-tags }}"
+          if [ -n "$TAGS" ]; then
+            go test -tags "$TAGS" -race -coverprofile=coverage.out -covermode=atomic ./...
+          else
+            go test -race -coverprofile=coverage.out -covermode=atomic ./...
+          fi
           go tool cover -func=coverage.out -o=coverage.txt
 
       - name: Calculate coverage

@@ -10,6 +10,10 @@ inputs:
     description: "Working directory"
     required: false
     default: "."
+  build-tags:
+    description: "Build tags to pass to go test (e.g., 'fts5')"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -24,4 +28,10 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         CGO_ENABLED: 1
-      run: go test -race -v ./...
+      run: |
+        TAGS="${{ inputs.build-tags }}"
+        if [ -n "$TAGS" ]; then
+          go test -tags "$TAGS" -race -v ./...
+        else
+          go test -race -v ./...
+        fi
