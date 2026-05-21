@@ -39,11 +39,11 @@ runs:
         fi
 
     - name: Install cosign
-      uses: sigstore/cosign-installer@v3
+      uses: sigstore/cosign-installer@v4
 
     - name: Run GoReleaser (full)
       if: inputs.mode == 'full'
-      uses: goreleaser/goreleaser-action@v6
+      uses: goreleaser/goreleaser-action@v7
       with:
         distribution: goreleaser
         version: "~> v2"
@@ -55,7 +55,7 @@ runs:
 
     - name: Run GoReleaser Pro (split)
       if: inputs.mode == 'split'
-      uses: goreleaser/goreleaser-action@v6
+      uses: goreleaser/goreleaser-action@v7
       with:
         distribution: goreleaser-pro
         version: "~> v2"
@@ -67,7 +67,7 @@ runs:
 
     - name: Run GoReleaser Pro (merge)
       if: inputs.mode == 'merge'
-      uses: goreleaser/goreleaser-action@v6
+      uses: goreleaser/goreleaser-action@v7
       with:
         distribution: goreleaser-pro
         version: "~> v2"
