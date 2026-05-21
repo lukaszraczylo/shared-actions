@@ -1,19 +1,11 @@
 name: "Semantic Version"
-description: "Calculate semantic version using semver-generator (built from source to avoid Docker :latest bootstrap loop)"
+description: "Calculate semantic version using semver-generator"
 
 inputs:
   config-file:
     description: "Path to semver config file"
     required: false
     default: "semver.yaml"
-  semver-version:
-    description: "Ref of lukaszraczylo/semver-generator to install (branch, tag, or commit SHA)"
-    required: false
-    default: "main"
-  go-version:
-    description: "Go version to use when installing semver-generator"
-    required: false
-    default: ">=1.24"
 
 outputs:
   version:
@@ -26,43 +18,18 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Setup Go
-      uses: actions/setup-go@v6
-      with:
-        go-version: ${{ inputs.go-version }}
-
-    - name: Install semver-generator from source
-      shell: bash
-      env:
-        SEMVER_REF: ${{ inputs.semver-version }}
-      run: |
-        set -euo pipefail
-        # GOPROXY=direct avoids stale module-proxy cache when SEMVER_REF
-        # points to a commit that was just pushed (e.g. semver-generator
-        # bootstrapping its own release).
-        GOPROXY=direct GOFLAGS=-mod=mod \
-          go install "github.com/lukaszraczylo/semver-generator@${SEMVER_REF}"
-        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
     - name: Calculate version
       id: semver
-      shell: bash
-      env:
-        CONFIG_FILE: ${{ inputs.config-file }}
-      run: |
-        set -euo pipefail
-        OUT=$(semver-generator generate -l -c "${CONFIG_FILE}")
-        echo "${OUT}"
-        VERSION=$(printf '%s\n' "${OUT}" | sed -e 's|SEMVER ||g' | tr -d '[:space:]')
-        echo "semantic_version=${VERSION}" >> "$GITHUB_OUTPUT"
+      uses: lukaszraczylo/semver-generator@v1
+      with:
+        config_file: ${{ inputs.config-file }}
+        repository_local: true
 
     - name: Format version
       id: format
       shell: bash
-      env:
-        VERSION: ${{ steps.semver.outputs.semantic_version }}
       run: |
-        set -euo pipefail
-        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-        echo "version_tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+        VERSION="${{ steps.semver.outputs.semantic_version }}"
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "version_tag=v${VERSION}" >> $GITHUB_OUTPUT
         echo "Version: v${VERSION}"
