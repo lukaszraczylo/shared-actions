@@ -33,6 +33,18 @@ runs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
+        # Fold any build-time source changes (e.g. version stamping by a
+        # repo-local workflow-prepare.sh) into the tagged commit. This is needed
+        # so consumers that fetch the tag's SOURCE — e.g. Yaegi-interpreted
+        # Traefik plugins, which Traefik never compiles — see the stamped value,
+        # and so GoReleaser's `release --clean` sees a clean working tree. The
+        # commit is reachable only via the tag; the branch is NOT advanced, so a
+        # source-tree placeholder (e.g. 0.0.0-dev on main) is preserved. No-op
+        # when the tree is already clean → unchanged for repos that don't stamp.
+        if ! git diff --quiet || ! git diff --cached --quiet; then
+          git add -A
+          git commit -m "chore(release): ${{ inputs.version-tag }}"
+        fi
         git tag -a ${{ inputs.version-tag }} -m "Release ${{ inputs.version-tag }}" || true
         if [[ "${{ inputs.mode }}" != "split" ]]; then
           git push origin ${{ inputs.version-tag }} || true
