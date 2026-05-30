@@ -109,6 +109,14 @@ jobs:
           lfs: ${{ inputs.lfs }}
 
       - name: Run workflow prepare script
+        # Expose the computed release version to a repo-local workflow-prepare.sh
+        # (e.g. to stamp the version into source for runtimes that cannot resolve
+        # it at build time, such as Yaegi-interpreted Traefik plugins). Only the
+        # release job has a version; the test/version jobs run the hook without
+        # it. VERSION is the bare semver (1.2.3); VERSION_TAG keeps the v prefix.
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          VERSION_TAG: ${{ needs.version.outputs.version_tag }}
         shell: bash
         run: |
           if [ -f "./workflow-prepare.sh" ]; then
