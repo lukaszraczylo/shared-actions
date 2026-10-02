@@ -4,6 +4,21 @@ Reusable workflows and composite actions for Go projects.
 
 ## Reusable Workflows
 
+### Runner selection
+
+Every reusable workflow accepts `runner` (label, or a JSON object to pick a runner group):
+
+```yaml
+with:
+  runner: self-hosted
+  # or
+  runner: '{"group":"ci-linux","labels":["x64"]}'
+```
+
+Resolution order: `inputs.runner`, repository/org variable `SHARED_ACTIONS_RUNNER`, `ubuntu-latest`.
+Set the variable once to move every consumer. In `go-release-cgo.yaml` the build matrix keeps its
+per-platform `os`; `runner` covers the other jobs. Runner groups exist only for organisations and enterprises.
+
 ### `go-release.yaml`
 
 Standard Go release workflow using GoReleaser.
@@ -56,6 +71,11 @@ jobs:
 ### `go-pr.yaml`
 
 Pull request checks: tests, linting, security scans.
+
+- `go vet` / `staticcheck` findings show as inline annotations on the PR diff; gosec and CodeQL post to code scanning.
+- The `report` job posts one sticky comment with every check's result and coverage, and fails if any check fails or coverage is below `coverage-threshold`. Require `PR Checks Report` in branch protection.
+- A push to a branch with an open PR skips the duplicate run; stale runs on the same branch are cancelled.
+- Fork PRs cannot receive the comment; the report still lands in the job summary.
 
 ```yaml
 jobs:

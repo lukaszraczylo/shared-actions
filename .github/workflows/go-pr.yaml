@@ -24,16 +24,58 @@ on:
         type: string
         default: ""
 
+      runner:
+        description: "Runner label, or JSON object such as {\"group\":\"ci\",\"labels\":[\"linux\"]} to select a runner group. Falls back to vars.SHARED_ACTIONS_RUNNER, then ubuntu-latest."
+        required: false
+        type: string
+        default: ""
+
 # Caller must declare these permissions:
 # permissions:
 #   contents: read
 #   pull-requests: write
 #   security-events: write
 
+concurrency:
+  group: go-pr-${{ github.repository }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
+  pre:
+    name: Detect duplicate run
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.dup.outputs.skip }}
+    steps:
+      # A push to a branch with an open PR also fires pull_request; run only the PR one.
+      - name: Skip push run when a PR is open
+        id: dup
+        uses: actions/github-script@v9
+        with:
+          script: |
+            let skip = false;
+            if (context.eventName === 'push') {
+              try {
+                const { data } = await github.rest.pulls.list({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  head: `${context.repo.owner}:${context.ref.replace('refs/heads/', '')}`,
+                  state: 'open',
+                });
+                skip = data.length > 0;
+              } catch (e) {
+                core.warning(`PR lookup failed, running checks: ${e.message}`);
+              }
+            }
+            core.setOutput('skip', String(skip));
+            if (skip) core.notice('Open PR found for this branch; checks run on the pull_request event.');
   static-analysis:
     name: Static Analysis
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    needs: pre
+    if: needs.pre.outputs.skip != 'true'
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -58,6 +100,14 @@ jobs:
       - name: Install staticcheck
         run: go install honnef.co/go/tools/cmd/staticcheck@latest
 
+      - name: Register problem matcher
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/go-problem-matcher.json" <<'JSON'
+          {"problemMatcher":[{"owner":"go-lint","severity":"error","pattern":[{"regexp":"^(?:vet: )?([^\\s:]+\\.go):(\\d+):(\\d+): (.+)$","file":1,"line":2,"column":3,"message":4}]}]}
+          JSON
+          echo "::add-matcher::$RUNNER_TEMP/go-problem-matcher.json"
+
       - name: Run go vet
         run: go vet ./...
 
@@ -66,7 +116,10 @@ jobs:
 
   security-scan:
     name: Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    needs: pre
+    if: needs.pre.outputs.skip != 'true'
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -123,7 +176,10 @@ jobs:
 
   gosec:
     name: Gosec SARIF
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    needs: pre
+    if: needs.pre.outputs.skip != 'true'
+    timeout-minutes: 15
     permissions:
       contents: read
       security-events: write
@@ -164,7 +220,10 @@ jobs:
 
   goreleaser-check:
     name: GoReleaser Config Validation
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    needs: pre
+    if: needs.pre.outputs.skip != 'true'
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -196,7 +255,10 @@ jobs:
 
   codeql:
     name: CodeQL Analysis
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    needs: pre
+    if: needs.pre.outputs.skip != 'true'
+    timeout-minutes: 45
     permissions:
       contents: read
       security-events: write
@@ -233,7 +295,10 @@ jobs:
 
   test:
     name: Tests & Coverage
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    needs: pre
+    if: needs.pre.outputs.skip != 'true'
+    timeout-minutes: 30
     outputs:
       coverage: ${{ steps.coverage.outputs.coverage }}
     steps:
@@ -276,66 +341,75 @@ jobs:
           echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
           echo "Total Coverage: $COVERAGE%"
 
-  coverage-report:
-    name: Coverage Report
-    runs-on: ubuntu-latest
-    needs: test
-    if: always() && needs.test.result == 'success'
+  report:
+    name: PR Checks Report
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    needs: [pre, static-analysis, security-scan, gosec, goreleaser-check, codeql, test]
+    if: always() && needs.pre.outputs.skip != 'true'
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - name: Comment coverage on PR
-        if: github.event_name == 'pull_request'
+      - name: Summarise, comment and gate
         uses: actions/github-script@v9
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          THRESHOLD: ${{ inputs.coverage-threshold }}
         with:
           script: |
-            const coverage = '${{ needs.test.outputs.coverage }}';
-            const threshold = ${{ inputs.coverage-threshold }};
-            const coverageNum = parseFloat(coverage);
-            const hasThreshold = threshold > 0;
-            const meetsThreshold = !hasThreshold || coverageNum >= threshold;
-            const emoji = meetsThreshold ? '✅' : '⚠️';
-            const status = hasThreshold ? (meetsThreshold ? 'meets' : 'below') + ' threshold' : 'reported';
-
-            let body = `## ${emoji} Test Coverage Report\n\n| Metric | Value |\n|--------|-------|\n| **Total Coverage** | ${coverage}% |`;
-            if (hasThreshold) {
-              body += `\n| **Threshold** | ${threshold}% |\n| **Status** | ${emoji} Coverage ${status} |`;
+            const needs = JSON.parse(process.env.NEEDS);
+            const threshold = Number(process.env.THRESHOLD);
+            const labels = {
+              'static-analysis': 'Static analysis (vet, staticcheck)',
+              'security-scan': 'Security scan (TruffleHog, govulncheck)',
+              'gosec': 'Gosec',
+              'goreleaser-check': 'GoReleaser config',
+              'codeql': 'CodeQL',
+              'test': 'Tests (race) & coverage',
+            };
+            const icon = { success: '✅', failure: '❌', cancelled: '🚫', skipped: '⏭️' };
+            const failed = [];
+            let body = '<!-- go-pr-report -->\n## PR checks\n\n| Check | Result |\n|---|---|\n';
+            for (const [key, label] of Object.entries(labels)) {
+              const result = needs[key]?.result ?? 'skipped';
+              if (result === 'failure' || result === 'cancelled') failed.push(label);
+              body += `| ${label} | ${icon[result] ?? result} ${result} |\n`;
             }
 
-            const { data: comments } = await github.rest.issues.listComments({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-            });
+            const coverage = parseFloat(needs.test?.outputs?.coverage);
+            const hasCoverage = !Number.isNaN(coverage);
+            if (hasCoverage) {
+              body += `\n**Total coverage:** ${coverage}%`;
+              if (threshold > 0) {
+                const ok = coverage >= threshold;
+                body += ` (threshold ${threshold}%: ${ok ? '✅ met' : '❌ below'})`;
+                if (!ok) failed.push(`Coverage ${coverage}% below ${threshold}%`);
+              }
+              body += '\n';
+            }
+            body += `\n[Workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
 
-            const botComment = comments.find(comment =>
-              comment.user.type === 'Bot' &&
-              comment.body.includes('Test Coverage Report')
-            );
+            await core.summary.addRaw(body, true).write();
 
-            if (botComment) {
-              await github.rest.issues.updateComment({
-                comment_id: botComment.id,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: body
-              });
+            if (context.eventName === 'pull_request') {
+              try {
+                const comments = await github.paginate(github.rest.issues.listComments, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                });
+                const existing = comments.find(c => c.user.type === 'Bot' &&
+                  (c.body.includes('<!-- go-pr-report -->') || c.body.includes('Test Coverage Report')));
+                const args = { owner: context.repo.owner, repo: context.repo.repo, body };
+                if (existing) {
+                  await github.rest.issues.updateComment({ ...args, comment_id: existing.id });
+                } else {
+                  await github.rest.issues.createComment({ ...args, issue_number: context.issue.number });
+                }
+              } catch (e) {
+                core.warning(`Could not post PR comment (fork PR or missing pull-requests: write): ${e.message}`);
+              }
             }
 
-      - name: Check coverage threshold
-        if: inputs.coverage-threshold > 0
-        run: |
-          COVERAGE=${{ needs.test.outputs.coverage }}
-          THRESHOLD=${{ inputs.coverage-threshold }}
-          echo "Coverage: $COVERAGE%"
-          echo "Threshold: $THRESHOLD%"
-          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
-            echo "❌ Coverage $COVERAGE% is below threshold $THRESHOLD%"
-            exit 1
-          fi
-          echo "✅ Coverage $COVERAGE% meets threshold $THRESHOLD%"
+            if (failed.length) core.setFailed(`Failed: ${failed.join('; ')}`);
