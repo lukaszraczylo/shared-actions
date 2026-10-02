@@ -32,7 +32,7 @@ concurrency:
 jobs:
   autoupdate:
     name: Update dependencies and test
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
 
     timeout-minutes: 30
     steps:

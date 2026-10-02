@@ -66,7 +66,7 @@ jobs:
     permissions:
       contents: write
       packages: write
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -90,7 +90,7 @@ jobs:
   test:
     name: Test
     needs: preflight
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -114,7 +114,7 @@ jobs:
   version:
     name: Calculate Version
     needs: test
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     outputs:
       version: ${{ steps.semver.outputs.version }}
       version_tag: ${{ steps.semver.outputs.version_tag }}
@@ -144,7 +144,7 @@ jobs:
     name: Release
     needs: version
     if: needs.version.outputs.version_tag != ''
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     permissions:
       contents: write
       packages: write
