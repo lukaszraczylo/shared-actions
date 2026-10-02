@@ -43,7 +43,7 @@ concurrency:
 jobs:
   pre:
     name: Detect duplicate run
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     timeout-minutes: 5
     outputs:
       skip: ${{ steps.dup.outputs.skip }}
@@ -72,7 +72,7 @@ jobs:
             if (skip) core.notice('Open PR found for this branch; checks run on the pull_request event.');
   static-analysis:
     name: Static Analysis
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     needs: pre
     if: needs.pre.outputs.skip != 'true'
     timeout-minutes: 15
@@ -116,7 +116,7 @@ jobs:
 
   security-scan:
     name: Security Scan
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     needs: pre
     if: needs.pre.outputs.skip != 'true'
     timeout-minutes: 20
@@ -176,7 +176,7 @@ jobs:
 
   gosec:
     name: Gosec SARIF
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     needs: pre
     if: needs.pre.outputs.skip != 'true'
     timeout-minutes: 15
@@ -220,7 +220,7 @@ jobs:
 
   goreleaser-check:
     name: GoReleaser Config Validation
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     needs: pre
     if: needs.pre.outputs.skip != 'true'
     timeout-minutes: 10
@@ -255,7 +255,7 @@ jobs:
 
   codeql:
     name: CodeQL Analysis
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     needs: pre
     if: needs.pre.outputs.skip != 'true'
     timeout-minutes: 45
@@ -295,7 +295,7 @@ jobs:
 
   test:
     name: Tests & Coverage
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     needs: pre
     if: needs.pre.outputs.skip != 'true'
     timeout-minutes: 30
@@ -343,7 +343,7 @@ jobs:
 
   report:
     name: PR Checks Report
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     needs: [pre, static-analysis, security-scan, gosec, goreleaser-check, codeql, test]
     if: always() && needs.pre.outputs.skip != 'true'
     timeout-minutes: 10
