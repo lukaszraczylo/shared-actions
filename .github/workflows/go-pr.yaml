@@ -337,7 +337,7 @@ jobs:
       - name: Calculate coverage
         id: coverage
         run: |
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          COVERAGE=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | sed 's/%//')
           echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
           echo "Total Coverage: $COVERAGE%"
 
