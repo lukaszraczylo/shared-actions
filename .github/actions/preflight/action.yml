@@ -19,6 +19,23 @@ inputs:
     required: false
     default: "HOMEBREW_TAP_TOKEN"
 
+  release-write:
+    description: "Probe that GITHUB_TOKEN can push to this repository (needed to create tags and releases)"
+    required: false
+    default: "false"
+  ghcr-push:
+    description: "Probe push access to ghcr.io: true, false, or auto (only when the GoReleaser config builds ghcr.io images)"
+    required: false
+    default: "false"
+  ghcr-image:
+    description: "Image path (owner/name) for the ghcr probe. Default: first ghcr.io path in the GoReleaser config, else the repository"
+    required: false
+    default: ""
+  ghcr-token-env:
+    description: "Name of the env var that holds the ghcr token"
+    required: false
+    default: "GITHUB_TOKEN"
+
 runs:
   using: "composite"
   steps:
@@ -29,6 +46,10 @@ runs:
         PF_SCAN: ${{ inputs.goreleaser-scan }}
         PF_REPOS: ${{ inputs.repo-access }}
         PF_TOKEN_ENV: ${{ inputs.repo-token-env }}
+        PF_RELEASE_WRITE: ${{ inputs.release-write }}
+        PF_GHCR: ${{ inputs.ghcr-push }}
+        PF_GHCR_IMAGE: ${{ inputs.ghcr-image }}
+        PF_GHCR_TOKEN_ENV: ${{ inputs.ghcr-token-env }}
       run: |
         missing=()
         add_missing() { # name reason
@@ -78,6 +99,60 @@ runs:
               fi
               rm -f "$body"
             done
+          fi
+        fi
+
+        if [ "$PF_RELEASE_WRITE" = "true" ]; then
+          out="$(git push --dry-run origin HEAD:refs/heads/preflight-probe 2>&1)" && rc=0 || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            if printf '%s' "$out" | grep -qiE 'denied|403|401|not permitted|could not read Username'; then
+              add_missing "contents:write" "The token cannot push to this repository, so it cannot create the tag or release. Grant 'contents: write' in the caller workflow permissions and check the repository Actions settings. Git said: $(printf '%s' "$out" | tail -n 1)"
+            else
+              echo "::warning title=Push probe inconclusive::$(printf '%s' "$out" | tail -n 1)"
+            fi
+          fi
+        fi
+
+        ghcr_wanted="$PF_GHCR"
+        cfg_found=""
+        for cfg in .goreleaser.yaml .goreleaser.yml goreleaser.yaml goreleaser.yml; do
+          [ -f "$cfg" ] && { cfg_found="$cfg"; break; }
+        done
+        if [ "$ghcr_wanted" = "auto" ]; then
+          ghcr_wanted=false
+          if [ -n "$cfg_found" ] && grep -qE '^(dockers|dockers_v2|docker_manifests):' "$cfg_found" && grep -q 'ghcr\.io' "$cfg_found"; then
+            ghcr_wanted=true
+          fi
+        fi
+        if [ "$ghcr_wanted" = "true" ]; then
+          gtoken="${!PF_GHCR_TOKEN_ENV:-}"
+          image="$PF_GHCR_IMAGE"
+          if [ -z "$image" ] && [ -n "$cfg_found" ]; then
+            image="$(grep -oE 'ghcr\.io/[A-Za-z0-9._/-]+' "$cfg_found" | head -n 1 | sed 's|^ghcr\.io/||')"
+          fi
+          image="${image:-$GITHUB_REPOSITORY}"
+          image="$(printf '%s' "$image" | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$gtoken" ]; then
+            add_missing "$PF_GHCR_TOKEN_ENV" "ghcr push needs this token but it is empty."
+          else
+            tbody="$(mktemp)"
+            code="$(curl -sS -o "$tbody" -w '%{http_code}' -u "${GITHUB_ACTOR:-token}:$gtoken" \
+              "https://ghcr.io/token?service=ghcr.io&scope=repository:$image:push,pull")" || code="000"
+            btoken="$(sed -n 's/.*"token" *: *"\([^"]*\)".*/\1/p' "$tbody" | head -n 1)"
+            rm -f "$tbody"
+            if [ "$code" = "200" ] && [ -n "$btoken" ]; then
+              ucode="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $btoken" \
+                "https://ghcr.io/v2/$image/blobs/uploads/")" || ucode="000"
+              case "$ucode" in
+                202) ;;
+                401|403) add_missing "packages:write" "The token cannot push ghcr.io/$image (HTTP $ucode). Grant 'packages: write' in the caller workflow permissions, and for an existing package allow this repository under Package settings, Manage Actions access." ;;
+                *) echo "::warning title=ghcr probe inconclusive::upload session for $image returned HTTP $ucode" ;;
+              esac
+            elif [ "$code" = "401" ] || [ "$code" = "403" ]; then
+              add_missing "packages:write" "ghcr.io refused the token for $image (HTTP $code). Grant 'packages: write' in the caller workflow permissions."
+            else
+              echo "::warning title=ghcr probe inconclusive::token request for $image returned HTTP $code"
+            fi
           fi
         fi
 

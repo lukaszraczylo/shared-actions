@@ -170,6 +170,11 @@ Fail in seconds when a prerequisite is missing, instead of at the end of a long 
     HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 ```
 
+Optional probes use the real token, so they catch caller `permissions:` that are too narrow:
+- `release-write: "true"` runs `git push --dry-run`, which fails when the token cannot push (no tag or release possible).
+- `ghcr-push: true|auto` asks ghcr.io for a push token and opens a blob upload session (no package is created). `auto` probes only when the config has `dockers`/`dockers_v2`/`docker_manifests` and mentions `ghcr.io`. The image is the first `ghcr.io/...` path in the config, else the repository (`ghcr-image` overrides).
+- A probe that cannot reach a verdict (network error, odd status) warns and does not fail.
+
 It also scans `.goreleaser.y*ml` and requires every `{{ .Env.NAME }}` (comment lines ignored) to be set. All problems are listed in one run.
 
 `go-release.yaml` and `go-release-cgo.yaml` run it in a first `preflight` job before tests. Set `preflight: false` to skip it, and `preflight-repos` to check access to a tap or helm-charts repo. An empty secret usually means the caller omitted `secrets: inherit`.

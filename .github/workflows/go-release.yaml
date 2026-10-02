@@ -63,6 +63,9 @@ concurrency:
 jobs:
   preflight:
     name: Preflight
+    permissions:
+      contents: write
+      packages: write
     runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     timeout-minutes: 5
     steps:
@@ -77,6 +80,8 @@ jobs:
         uses: lukaszraczylo/shared-actions/.github/actions/preflight@main
         with:
           require: GITHUB_TOKEN
+          release-write: "true"
+          ghcr-push: ${{ inputs.docker-enabled && inputs.docker-registry == 'ghcr.io' && 'true' || 'false' }}
           repo-access: ${{ inputs.preflight-repos }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

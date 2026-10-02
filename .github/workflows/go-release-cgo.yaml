@@ -90,6 +90,9 @@ concurrency:
 jobs:
     preflight:
         name: Preflight
+        permissions:
+            contents: write
+            packages: write
         runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
         timeout-minutes: 5
         steps:
@@ -104,6 +107,8 @@ jobs:
               uses: lukaszraczylo/shared-actions/.github/actions/preflight@main
               with:
                   require: GITHUB_TOKEN,GORELEASER_KEY
+                  release-write: "true"
+                  ghcr-push: auto
                   repo-access: ${{ inputs.preflight-repos }}
                   repo-token-env: GITHUB_TOKEN
               env:
