@@ -182,6 +182,8 @@ jobs:
       - name: Set up QEMU
         if: inputs.docker-enabled
         uses: docker/setup-qemu-action@v4
+        with:
+          image: tonistiigi/binfmt:qemu-v8.1.5
 
       - name: Set up Docker Buildx
         if: inputs.docker-enabled
