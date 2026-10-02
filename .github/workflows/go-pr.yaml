@@ -345,7 +345,7 @@ jobs:
     name: PR Checks Report
     runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     needs: [pre, static-analysis, security-scan, gosec, goreleaser-check, codeql, test]
-    if: always() && needs.pre.outputs.skip != 'true'
+    if: ${{ !cancelled() && needs.pre.outputs.skip != 'true' }}
     timeout-minutes: 10
     permissions:
       contents: read
