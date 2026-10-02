@@ -53,6 +53,11 @@ on:
         required: false
         type: string
         default: ""
+      release-timeout:
+        description: "GoReleaser timeout for the release step (Go duration)"
+        required: false
+        type: string
+        default: "60m"
     outputs:
       version:
         description: "The calculated version (without v prefix)"
@@ -206,6 +211,7 @@ jobs:
         uses: lukaszraczylo/shared-actions/.github/actions/goreleaser@main
         with:
           version-tag: ${{ needs.version.outputs.version_tag }}
+          timeout: ${{ inputs.release-timeout }}
           mode: full
           github-token: ${{ secrets.GITHUB_TOKEN }}
           homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_TOKEN }}

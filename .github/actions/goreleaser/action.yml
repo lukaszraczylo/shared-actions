@@ -20,6 +20,10 @@ inputs:
     description: "GoReleaser Pro license key (for split/merge)"
     required: false
     default: ""
+  timeout:
+    description: "GoReleaser timeout for the whole step (Go duration, e.g. 60m). The continue command defaults to 30m, which cuts off slow multi-architecture docker builds."
+    required: false
+    default: "60m"
   homebrew-tap-token:
     description: "Homebrew tap token (optional)"
     required: false
@@ -59,7 +63,7 @@ runs:
       with:
         distribution: goreleaser
         version: "~> v2"
-        args: release --clean
+        args: release --clean --timeout ${{ inputs.timeout }}
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         HOMEBREW_TAP_TOKEN: ${{ inputs.homebrew-tap-token }}
@@ -71,7 +75,7 @@ runs:
       with:
         distribution: goreleaser-pro
         version: "~> v2"
-        args: release --clean --split
+        args: release --clean --split --timeout ${{ inputs.timeout }}
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GORELEASER_KEY: ${{ inputs.goreleaser-key }}
@@ -83,7 +87,7 @@ runs:
       with:
         distribution: goreleaser-pro
         version: "~> v2"
-        args: continue --merge
+        args: continue --merge --timeout ${{ inputs.timeout }}
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GORELEASER_KEY: ${{ inputs.goreleaser-key }}
