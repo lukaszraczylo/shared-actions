@@ -65,6 +65,16 @@ on:
                 required: false
                 type: string
                 default: ""
+            preflight:
+                description: "Fail early when a required secret, env var or GoReleaser .Env reference is missing"
+                required: false
+                type: boolean
+                default: true
+            preflight-repos:
+                description: "Comma-separated owner/repo list the token must have push access to (e.g. a Homebrew tap or helm-charts repo)"
+                required: false
+                type: string
+                default: ""
         outputs:
             version:
                 description: "The calculated version (without v prefix)"
@@ -78,8 +88,31 @@ concurrency:
     cancel-in-progress: false
 
 jobs:
+    preflight:
+        name: Preflight
+        runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+        timeout-minutes: 5
+        steps:
+            - name: Checkout
+              if: inputs.preflight
+              uses: actions/checkout@v6
+              with:
+                  lfs: false
+
+            - name: Check secrets and access
+              if: inputs.preflight
+              uses: lukaszraczylo/shared-actions/.github/actions/preflight@main
+              with:
+                  require: GITHUB_TOKEN,GORELEASER_KEY
+                  repo-access: ${{ inputs.preflight-repos }}
+                  repo-token-env: GITHUB_TOKEN
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GORELEASER_KEY: ${{ secrets.GORELEASER_PRO }}
+
     test:
         name: Test
+        needs: preflight
         runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
         timeout-minutes: 30
         steps:
@@ -105,6 +138,7 @@ jobs:
 
     frontend:
         name: Build Frontend
+        needs: preflight
         if: inputs.node-enabled && inputs.node-build-script != ''
         runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
         timeout-minutes: 20

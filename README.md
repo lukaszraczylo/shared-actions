@@ -154,6 +154,26 @@ Run GoReleaser with mode support.
     github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+### `actions/preflight`
+
+Fail in seconds when a prerequisite is missing, instead of at the end of a long run. Reads names from the step `env`, so map secrets there.
+
+```yaml
+- uses: lukaszraczylo/shared-actions/.github/actions/preflight@main
+  with:
+    require: GITHUB_TOKEN,NPM_TOKEN          # must be non-empty
+    repo-access: lukaszraczylo/helm-charts   # token needs push access
+    repo-token-env: HOMEBREW_TAP_TOKEN
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+```
+
+It also scans `.goreleaser.y*ml` and requires every `{{ .Env.NAME }}` (comment lines ignored) to be set. All problems are listed in one run.
+
+`go-release.yaml` and `go-release-cgo.yaml` run it in a first `preflight` job before tests. Set `preflight: false` to skip it, and `preflight-repos` to check access to a tap or helm-charts repo. An empty secret usually means the caller omitted `secrets: inherit`.
+
 ### `actions/rolling-release`
 
 Create/update a rolling release tag.

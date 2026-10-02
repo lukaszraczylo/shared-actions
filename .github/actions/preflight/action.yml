@@ -1,0 +1,88 @@
+name: "Preflight"
+description: "Fail early when a required secret, env var or repository access is missing"
+
+inputs:
+  require:
+    description: "Comma-separated names that must be set and non-empty in the step env"
+    required: false
+    default: ""
+  goreleaser-scan:
+    description: "Also require every .Env.NAME referenced by the GoReleaser config"
+    required: false
+    default: "true"
+  repo-access:
+    description: "Comma-separated owner/repo list the token must have push access to"
+    required: false
+    default: ""
+  repo-token-env:
+    description: "Name of the env var that holds the token for repo-access"
+    required: false
+    default: "HOMEBREW_TAP_TOKEN"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check prerequisites
+      shell: bash
+      env:
+        PF_REQUIRE: ${{ inputs.require }}
+        PF_SCAN: ${{ inputs.goreleaser-scan }}
+        PF_REPOS: ${{ inputs.repo-access }}
+        PF_TOKEN_ENV: ${{ inputs.repo-token-env }}
+      run: |
+        missing=()
+        add_missing() { # name reason
+          case " ${missing[*]-} " in *" $1 "*) return ;; esac
+          missing+=("$1")
+          echo "::error title=Missing $1::$2"
+        }
+        is_set() { [ -n "${!1:-}" ]; }
+
+        IFS=',' read -r -a required <<< "$PF_REQUIRE"
+        for name in "${required[@]-}"; do
+          name="${name// /}"
+          [ -z "$name" ] && continue
+          is_set "$name" || add_missing "$name" "Required by this workflow but empty. Set the repository or organisation secret $name and make sure the caller passes 'secrets: inherit'."
+        done
+
+        if [ "$PF_SCAN" = "true" ]; then
+          for cfg in .goreleaser.yaml .goreleaser.yml goreleaser.yaml goreleaser.yml; do
+            [ -f "$cfg" ] || continue
+            echo "Scanning $cfg for .Env references"
+            while IFS= read -r ref; do
+              name="${ref#.Env.}"
+              is_set "$name" || add_missing "$name" "$cfg references .Env.$name but it is not available to the GoReleaser step. GoReleaser would fail at the end of the run."
+            done < <(grep -vE '^[[:space:]]*#' "$cfg" | grep -oE '\.Env\.[A-Za-z_][A-Za-z0-9_]*' | sort -u)
+            break
+          done
+        fi
+
+        if [ -n "$PF_REPOS" ]; then
+          token="${!PF_TOKEN_ENV:-}"
+          if [ -z "$token" ]; then
+            add_missing "$PF_TOKEN_ENV" "repo-access needs this token but it is empty."
+          else
+            IFS=',' read -r -a repos <<< "$PF_REPOS"
+            for repo in "${repos[@]}"; do
+              repo="${repo// /}"
+              [ -z "$repo" ] && continue
+              body="$(mktemp)"
+              code="$(curl -sS -o "$body" -w '%{http_code}' \
+                -H "Authorization: Bearer $token" \
+                -H "Accept: application/vnd.github+json" \
+                "${GITHUB_API_URL:-https://api.github.com}/repos/$repo")" || code="000"
+              if [ "$code" != "200" ]; then
+                add_missing "access:$repo" "$PF_TOKEN_ENV cannot read $repo (HTTP $code). Check the token scope, expiry and repository access."
+              elif ! grep -qE '"push": *true' "$body"; then
+                add_missing "access:$repo" "$PF_TOKEN_ENV can read $repo but has no push access."
+              fi
+              rm -f "$body"
+            done
+          fi
+        fi
+
+        if [ "${#missing[@]}" -gt 0 ]; then
+          echo "Preflight failed: ${missing[*]}"
+          exit 1
+        fi
+        echo "Preflight passed"
