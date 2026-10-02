@@ -34,10 +34,10 @@ on:
         type: boolean
         default: false
       runner:
-        description: "Runner label(s) for the release jobs. Defaults to ubuntu-latest; set to a self-hosted label (e.g. self-hosted) to run on your own runner."
+        description: "Runner label, or JSON object such as {\"group\":\"ci\",\"labels\":[\"linux\"]} to select a runner group. Falls back to vars.SHARED_ACTIONS_RUNNER, then ubuntu-latest."
         required: false
         type: string
-        default: "ubuntu-latest"
+        default: ""
     outputs:
       version:
         description: "The calculated version (without v prefix)"
@@ -46,10 +46,15 @@ on:
         description: "The version tag (with v prefix)"
         value: ${{ jobs.version.outputs.version_tag }}
 
+concurrency:
+  group: release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   test:
     name: Test
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -72,10 +77,11 @@ jobs:
   version:
     name: Calculate Version
     needs: test
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     outputs:
       version: ${{ steps.semver.outputs.version }}
       version_tag: ${{ steps.semver.outputs.version_tag }}
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -101,11 +107,12 @@ jobs:
     name: Release
     needs: version
     if: needs.version.outputs.version_tag != ''
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest' || toJSON(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     permissions:
       contents: write
       packages: write
       id-token: write
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v6
