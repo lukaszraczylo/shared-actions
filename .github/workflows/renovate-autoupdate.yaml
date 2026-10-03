@@ -28,6 +28,11 @@ on:
         required: false
         type: string
         default: "22"
+      go-mod-tidy:
+        description: "Run go mod tidy after a Go update. Turn it off for an Encore app: Encore adds imports at build time, so tidy prunes go.sum entries the build needs."
+        required: false
+        type: boolean
+        default: true
       go-prepare-command:
         description: "Shell commands to run before the Go tests, for example installing a CLI. To put a tool on PATH, append its directory to $GITHUB_PATH."
         required: false
@@ -143,6 +148,7 @@ jobs:
           GO_DIR: ${{ inputs.go-working-directory }}
           NODE_DIR: ${{ inputs.node-working-directory }}
           PNPM_VERSION: ${{ inputs.pnpm-version }}
+          GO_MOD_TIDY: ${{ inputs.go-mod-tidy }}
           CONFIG_FILE: ${{ runner.temp }}/renovate-autoupdate-config.json
         run: |
           jq -n \
@@ -155,6 +161,7 @@ jobs:
             --arg go_dir "$GO_DIR" \
             --arg node_dir "$NODE_DIR" \
             --arg pnpm_version "$PNPM_VERSION" \
+            --argjson go_tidy "$GO_MOD_TIDY" \
             '
             # A regex for files directly inside a directory, so only what the tests cover is updated.
             def prefix($d): (if $d == "." or $d == "" then "" else ($d | ltrimstr("./") | rtrimstr("/")) + "/" end) | gsub("\\."; "\\.");
@@ -183,7 +190,7 @@ jobs:
               prHourlyLimit: 0,
               branchConcurrentLimit: 0,
               # A Go major update changes the import path: rewrite the imports, so the build tests the real update.
-              postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],
+              postUpdateOptions: ((if $go_tidy then ["gomodTidy"] else [] end) + ["gomodUpdateImportPaths"]),
               statusCheckNames: {
                 artifactError: null,
                 configValidation: null,
