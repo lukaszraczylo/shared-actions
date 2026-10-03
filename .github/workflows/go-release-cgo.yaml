@@ -103,7 +103,7 @@ jobs:
         steps:
             - name: Checkout
               if: inputs.preflight
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
               with:
                   lfs: false
 
@@ -127,7 +127,7 @@ jobs:
         timeout-minutes: 30
         steps:
             - name: Checkout
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
               with:
                   fetch-depth: 0
                   lfs: ${{ inputs.lfs }}
@@ -154,7 +154,7 @@ jobs:
         timeout-minutes: 20
         steps:
             - name: Checkout
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
               with:
                   lfs: ${{ inputs.lfs }}
 
@@ -194,7 +194,7 @@ jobs:
         timeout-minutes: 10
         steps:
             - name: Checkout
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
               with:
                   fetch-depth: 0
                   lfs: ${{ inputs.lfs }}
@@ -229,7 +229,7 @@ jobs:
         timeout-minutes: 60
         steps:
             - name: Checkout
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
               with:
                   fetch-depth: 0
                   lfs: ${{ inputs.lfs }}
@@ -308,7 +308,7 @@ jobs:
         timeout-minutes: 60
         steps:
             - name: Checkout
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
               with:
                   fetch-depth: 0
                   lfs: ${{ inputs.lfs }}

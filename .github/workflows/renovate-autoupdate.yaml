@@ -263,7 +263,7 @@ jobs:
 
       # Not the triggering ref: a push or a manual run from another branch must still test the default branch.
       - name: Checkout the default branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.default.outputs.branch }}
           fetch-depth: 0
