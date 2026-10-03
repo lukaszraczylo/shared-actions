@@ -4,12 +4,10 @@ name: Validate
 # opens a PR for each action bump; this workflow is the gate those PRs must pass.
 # The aggregate job "validate" is the one required status check.
 
+# No paths filter: "validate" is a required status check, and a required check
+# that never runs blocks a PR that touches only other files.
 on:
   pull_request:
-    paths:
-      - ".github/**"
-      - "scripts/**"
-      - "testdata/**"
   workflow_dispatch:
 
 permissions:
