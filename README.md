@@ -86,6 +86,45 @@ jobs:
     secrets: inherit
 ```
 
+### `node-pr.yaml`
+
+Pull request checks for a Node, Vue or Astro project. It installs without changing the lockfile, then runs `lint`, `typecheck`, `test` and `build`. A script that does not exist is skipped. A push to a branch with an open PR skips the duplicate run, and stale runs on the same branch are cancelled. Call it once per project directory.
+
+```yaml
+name: Pull Request
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - "**"
+      - "!main"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  frontend:
+    uses: lukaszraczylo/shared-actions/.github/workflows/node-pr.yaml@main
+    with:
+      working-directory: web
+```
+
+**Inputs:**
+| Input | Default | Description |
+|-------|---------|-------------|
+| `node-version` | `22` | Node.js version |
+| `working-directory` | `.` | Directory that holds `package.json` |
+| `scripts` | `lint,typecheck,test,build` | Scripts to run in order. A missing script is skipped. |
+| `require-tests` | `false` | Fail when there is no `test` script |
+| `lfs` | `false` | Git LFS checkout |
+| `runner` | | Runner label or runner group, as in the other workflows |
+
+pnpm is used when `pnpm-lock.yaml` exists, yarn for `yarn.lock`, otherwise npm. pnpm and yarn run through Corepack, so set `packageManager` in `package.json`.
+
 ### `go-autoupdate.yaml`
 
 Automatic dependency updates for Go. See `renovate-autoupdate.yaml` for the Renovate-based replacement that also covers npm, pnpm and yarn.

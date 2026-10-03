@@ -1,0 +1,166 @@
+name: Node Pull Request
+
+# Checks for a Node, Vue or Astro project: install without touching the lockfile,
+# then run lint, typecheck, test and build. A script that does not exist is skipped.
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version to use"
+        required: false
+        type: string
+        default: "22"
+      working-directory:
+        description: "Directory that holds package.json"
+        required: false
+        type: string
+        default: "."
+      scripts:
+        description: "Comma-separated package.json scripts to run, in order. A script that does not exist is skipped."
+        required: false
+        type: string
+        default: "lint,typecheck,test,build"
+      require-tests:
+        description: "Fail when package.json has no test script"
+        required: false
+        type: boolean
+        default: false
+      lfs:
+        description: "Enable Git LFS checkout (for repos with large files)"
+        required: false
+        type: boolean
+        default: false
+      runner:
+        description: "Runner label, or JSON object such as {\"group\":\"ci\",\"labels\":[\"linux\"]} to select a runner group. Falls back to vars.SHARED_ACTIONS_RUNNER, then ubuntu-latest."
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: node-pr-${{ github.repository }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}-${{ inputs.working-directory }}
+  cancel-in-progress: true
+
+jobs:
+  pre:
+    name: Detect duplicate run
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      skip: ${{ steps.dup.outputs.skip }}
+    steps:
+      # A push to a branch with an open PR also fires pull_request; run only the PR one.
+      - name: Skip push run when a PR is open
+        id: dup
+        uses: actions/github-script@v9
+        with:
+          script: |
+            let skip = false;
+            if (context.eventName === 'push') {
+              try {
+                const { data } = await github.rest.pulls.list({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  head: `${context.repo.owner}:${context.ref.replace('refs/heads/', '')}`,
+                  state: 'open',
+                });
+                skip = data.length > 0;
+              } catch (e) {
+                core.warning(`PR lookup failed, running checks: ${e.message}`);
+              }
+            }
+            core.setOutput('skip', String(skip));
+            if (skip) core.notice('Open PR found for this branch; checks run on the pull_request event.');
+
+  checks:
+    name: Checks (${{ inputs.working-directory }})
+    needs: pre
+    if: needs.pre.outputs.skip != 'true'
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          lfs: ${{ inputs.lfs }}
+
+      - name: Run workflow prepare script
+        shell: bash
+        run: |
+          if [ -f "./workflow-prepare.sh" ]; then
+            chmod +x ./workflow-prepare.sh
+            ./workflow-prepare.sh
+          fi
+
+      - name: Detect the package manager
+        id: detect
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ ! -f package.json ]; then
+            echo "::error::No package.json in ${{ inputs.working-directory }}."
+            exit 1
+          fi
+          pm=npm
+          if [ -f pnpm-lock.yaml ]; then pm=pnpm
+          elif [ -f yarn.lock ]; then pm=yarn
+          fi
+          echo "pm=$pm" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          PM: ${{ steps.detect.outputs.pm }}
+        run: |
+          # Install without updating the lockfile, so a lockfile that does not match package.json fails.
+          case "$PM" in
+            pnpm | yarn)
+              command -v corepack >/dev/null || npm install --global corepack
+              corepack enable "$PM"
+              ;;
+          esac
+          case "$PM" in
+            pnpm) pnpm install --frozen-lockfile ;;
+            yarn) yarn install --immutable ;;
+            npm)
+              if [ -f package-lock.json ]; then npm ci; else npm install; fi
+              ;;
+          esac
+
+      - name: Run scripts
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          PM: ${{ steps.detect.outputs.pm }}
+          SCRIPTS: ${{ inputs.scripts }}
+          REQUIRE_TESTS: ${{ inputs.require-tests }}
+        run: |
+          if [ "$REQUIRE_TESTS" = true ] && ! jq -e '.scripts.test' package.json >/dev/null; then
+            echo "::error::package.json has no test script."
+            exit 1
+          fi
+          ran=()
+          IFS=',' read -r -a scripts <<<"$SCRIPTS"
+          for script in "${scripts[@]}"; do
+            script=$(echo "$script" | xargs)
+            [ -n "$script" ] || continue
+            if jq -e --arg s "$script" '.scripts[$s]' package.json >/dev/null; then
+              echo "::group::$PM run $script"
+              "$PM" run "$script"
+              echo "::endgroup::"
+              ran+=("$script")
+            else
+              echo "::notice::No '$script' script, skipping."
+            fi
+          done
+          if [ "${#ran[@]}" -eq 0 ]; then
+            echo "::warning::None of the scripts ($SCRIPTS) exist in package.json, so nothing was checked."
+          fi
+          echo "Ran: ${ran[*]:-none} (${PM})" >> "$GITHUB_STEP_SUMMARY"
