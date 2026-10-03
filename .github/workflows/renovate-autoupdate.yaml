@@ -319,7 +319,7 @@ jobs:
 
       # Not the triggering ref: a push or a manual run from another branch must still test the default branch.
       - name: Checkout the default branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ steps.default.outputs.branch }}
           fetch-depth: 0
@@ -328,8 +328,8 @@ jobs:
       - name: Merge the update branch locally
         id: merge
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "Lukasz Raczylo"
+          git config user.email "lukasz@raczylo.com"
           git fetch origin "$BRANCH"
           echo "head=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
           echo "subject=$(git log -1 --format=%s FETCH_HEAD)" >> "$GITHUB_OUTPUT"
@@ -408,7 +408,7 @@ jobs:
 
       - name: Setup Go
         if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.go == 'true'
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ inputs.go-version }}
           check-latest: true
@@ -443,7 +443,7 @@ jobs:
 
       - name: Setup Node.js
         if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.node == 'true'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
 

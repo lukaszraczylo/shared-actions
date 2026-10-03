@@ -78,7 +78,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           lfs: ${{ inputs.lfs }}
@@ -92,7 +92,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ inputs.go-version }}
           cache: true
@@ -122,7 +122,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           lfs: ${{ inputs.lfs }}
@@ -136,7 +136,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ inputs.go-version }}
           cache: true
@@ -185,7 +185,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           lfs: ${{ inputs.lfs }}
@@ -199,7 +199,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ inputs.go-version }}
           cache: true
@@ -226,7 +226,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           lfs: ${{ inputs.lfs }}
@@ -240,7 +240,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ inputs.go-version }}
           cache: true
@@ -264,7 +264,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           lfs: ${{ inputs.lfs }}
 
@@ -277,7 +277,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ inputs.go-version }}
           cache: true
@@ -303,7 +303,7 @@ jobs:
       coverage: ${{ steps.coverage.outputs.coverage }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           lfs: ${{ inputs.lfs }}
@@ -317,7 +317,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ inputs.go-version }}
           cache: true

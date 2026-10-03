@@ -1,0 +1,89 @@
+name: Validate
+
+# Checks that a change to the workflows or composite actions still works. Renovate
+# opens a PR for each action bump; this workflow is the gate those PRs must pass.
+# The aggregate job "validate" is the one required status check.
+
+# No paths filter: "validate" is a required status check, and a required check
+# that never runs blocks a PR that touches only other files.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: validate-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # actionlint, then every external `uses:` reference must resolve.
+      - name: Check workflows and action references
+        run: scripts/check-actions.sh --ci
+
+  selftest-go:
+    name: Self-test go-test action
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The local path runs the action as it is on this branch, not at @main.
+      - name: Run the go-test action on the fixture module
+        uses: ./.github/actions/go-test
+        with:
+          working-directory: testdata/selftest/go
+
+  selftest-node-build:
+    name: Self-test node-build action
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Run the node-build action on the fixture project
+        uses: ./.github/actions/node-build
+        with:
+          build-script: cd testdata/selftest/node && npm ci && npm run build
+          cache-dependency-path: testdata/selftest/node/package-lock.json
+
+  selftest-node-pr:
+    name: Self-test node-pr workflow
+    uses: ./.github/workflows/node-pr.yaml
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      working-directory: testdata/selftest/node
+      require-tests: true
+
+  validate:
+    name: validate
+    if: always()
+    needs: [static, selftest-go, selftest-node-build, selftest-node-pr]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every check to pass
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            if [ "$r" != success ]; then
+              echo "::error::a validation job finished as '$r'"
+              exit 1
+            fi
+          done
