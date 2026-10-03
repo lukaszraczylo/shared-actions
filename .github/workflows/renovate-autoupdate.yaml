@@ -58,6 +58,16 @@ on:
         required: false
         type: string
         default: "lint,typecheck,test,build"
+      node-workspace:
+        description: "The Node project is a pnpm workspace. node-working-directory then holds pnpm-workspace.yaml and pnpm-lock.yaml, and needs no package.json. Dependencies install once there, and node-scripts run in each of node-packages."
+        required: false
+        type: boolean
+        default: false
+      node-packages:
+        description: "With node-workspace, comma-separated workspace package directories, relative to node-working-directory. Only these are updated and tested."
+        required: false
+        type: string
+        default: ""
       pnpm-version:
         description: "pnpm version to use, for a repo whose package.json has no packageManager field. Empty uses the packageManager field, or the newest pnpm."
         required: false
@@ -147,6 +157,8 @@ jobs:
           USE_NODE: ${{ inputs.node }}
           GO_DIR: ${{ inputs.go-working-directory }}
           NODE_DIR: ${{ inputs.node-working-directory }}
+          NODE_WORKSPACE: ${{ inputs.node-workspace }}
+          NODE_PACKAGES: ${{ inputs.node-packages }}
           PNPM_VERSION: ${{ inputs.pnpm-version }}
           GO_MOD_TIDY: ${{ inputs.go-mod-tidy }}
           CONFIG_FILE: ${{ runner.temp }}/renovate-autoupdate-config.json
@@ -160,11 +172,20 @@ jobs:
             --argjson use_node "$USE_NODE" \
             --arg go_dir "$GO_DIR" \
             --arg node_dir "$NODE_DIR" \
+            --argjson node_workspace "$NODE_WORKSPACE" \
+            --arg node_packages "$NODE_PACKAGES" \
             --arg pnpm_version "$PNPM_VERSION" \
             --argjson go_tidy "$GO_MOD_TIDY" \
             '
             # A regex for files directly inside a directory, so only what the tests cover is updated.
             def prefix($d): (if $d == "." or $d == "" then "" else ($d | ltrimstr("./") | rtrimstr("/")) + "/" end) | gsub("\\."; "\\.");
+            def pkgprefix($d; $p): prefix($d) + ($p | ltrimstr("./") | rtrimstr("/") | gsub("\\."; "\\.")) + "/";
+            # A workspace updates only its listed packages. The root lockfile is rewritten by pnpm with them.
+            def node_files:
+              if $node_workspace
+              then [$node_packages | split(",")[] | gsub("^\\s+|\\s+$"; "") | select(length > 0) | "/^" + pkgprefix($node_dir; .) + "package\\.json$/"]
+              else ["/^" + prefix($node_dir) + "package\\.json$/"]
+              end;
             {
               platform: "github",
               repositories: [$repo],
@@ -175,7 +196,7 @@ jobs:
               # Renovate writes the lockfile with its own pnpm. Use the version the tests install with.
               constraints: (if $pnpm_version != "" then {pnpm: $pnpm_version} else {} end),
               gomod: {managerFilePatterns: ["/^" + prefix($go_dir) + "go\\.mod$/"]},
-              npm: {managerFilePatterns: ["/^" + prefix($node_dir) + "package\\.json$/", "/^" + prefix($node_dir) + "pnpm-workspace\\.yaml$/"]},
+              npm: {managerFilePatterns: (node_files + ["/^" + prefix($node_dir) + "pnpm-workspace\\.yaml$/"])},
               dependencyDashboard: false,
               # Branches only: with no dashboard, no PR is ever opened. The workflow opens it after the tests.
               prCreation: "approval",
@@ -303,6 +324,8 @@ jobs:
         env:
           GO_DIR: ${{ inputs.go-working-directory }}
           NODE_DIR: ${{ inputs.node-working-directory }}
+          NODE_WORKSPACE: ${{ inputs.node-workspace }}
+          NODE_PACKAGES: ${{ inputs.node-packages }}
           USE_GO: ${{ inputs.go }}
           USE_NODE: ${{ inputs.node }}
         run: |
@@ -310,7 +333,29 @@ jobs:
           node=false
           pm=npm
           if [ "$USE_GO" = true ] && [ -f "$GO_DIR/go.mod" ]; then go=true; fi
-          if [ "$USE_NODE" = true ] && [ -f "$NODE_DIR/package.json" ]; then
+          if [ "$USE_NODE" = true ] && [ "$NODE_WORKSPACE" = true ]; then
+            if [ ! -f "$NODE_DIR/pnpm-workspace.yaml" ] || [ ! -f "$NODE_DIR/pnpm-lock.yaml" ]; then
+              echo "::error::node-workspace needs pnpm-workspace.yaml and pnpm-lock.yaml in $NODE_DIR."
+              exit 1
+            fi
+            IFS=',' read -r -a packages <<<"$NODE_PACKAGES"
+            count=0
+            for package in "${packages[@]}"; do
+              package=$(echo "$package" | xargs)
+              [ -n "$package" ] || continue
+              if [ ! -f "$NODE_DIR/$package/package.json" ]; then
+                echo "::error::node-packages lists $package, but $NODE_DIR/$package/package.json does not exist."
+                exit 1
+              fi
+              count=$((count + 1))
+            done
+            if [ "$count" -eq 0 ]; then
+              echo "::error::node-workspace needs node-packages: the packages to update and test."
+              exit 1
+            fi
+            node=true
+            pm=pnpm
+          elif [ "$USE_NODE" = true ] && [ -f "$NODE_DIR/package.json" ]; then
             node=true
             if [ -f "$NODE_DIR/pnpm-lock.yaml" ]; then pm=pnpm
             elif [ -f "$NODE_DIR/yarn.lock" ]; then pm=yarn
@@ -402,25 +447,44 @@ jobs:
           PM: ${{ steps.detect.outputs.pm }}
           SCRIPTS: ${{ inputs.node-scripts }}
           REQUIRE_TESTS: ${{ inputs.require-node-tests }}
+          NODE_WORKSPACE: ${{ inputs.node-workspace }}
+          NODE_PACKAGES: ${{ inputs.node-packages }}
         run: |
           set -o pipefail
           log="$RUNNER_TEMP/test-output.log"
-          if [ "$REQUIRE_TESTS" = true ] && ! jq -e '.scripts.test' package.json >/dev/null; then
-            echo "::error::package.json has no test script. Add one, or set require-node-tests to false."
-            echo "package.json has no test script, so the update was not tested." >>"$log"
-            exit 1
+          # A single project is the one package ".". A workspace is each listed package.
+          packages=(.)
+          if [ "$NODE_WORKSPACE" = true ]; then
+            IFS=',' read -r -a packages <<<"$NODE_PACKAGES"
+          fi
+          if [ "$REQUIRE_TESTS" = true ]; then
+            for package in "${packages[@]}"; do
+              package=$(echo "$package" | xargs)
+              [ -n "$package" ] || continue
+              if ! jq -e '.scripts.test' "$package/package.json" >/dev/null; then
+                echo "::error::$package/package.json has no test script. Add one, or set require-node-tests to false."
+                echo "$package/package.json has no test script, so the update was not tested." >>"$log"
+                exit 1
+              fi
+            done
           fi
           IFS=',' read -r -a scripts <<<"$SCRIPTS"
           for script in "${scripts[@]}"; do
             script=$(echo "$script" | xargs)
             [ -n "$script" ] || continue
-            if jq -e --arg s "$script" '.scripts[$s]' package.json >/dev/null; then
-              echo "::group::$PM run $script"
-              "$PM" run "$script" 2>&1 | tee -a "$log"
-              echo "::endgroup::"
-            else
-              echo "::notice::No '$script' script, skipping."
-            fi
+            for package in "${packages[@]}"; do
+              package=$(echo "$package" | xargs)
+              [ -n "$package" ] || continue
+              where=""
+              [ "$package" = . ] || where=" ($package)"
+              if jq -e --arg s "$script" '.scripts[$s]' "$package/package.json" >/dev/null; then
+                echo "::group::$PM run $script$where"
+                (cd "$package" && "$PM" run "$script") 2>&1 | tee -a "$log"
+                echo "::endgroup::"
+              else
+                echo "::notice::No '$script' script$where, skipping."
+              fi
+            done
           done
 
       - name: Mark the tests as passed
