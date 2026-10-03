@@ -119,6 +119,7 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   GORELEASER_KEY: ${{ secrets.GORELEASER_PRO }}
+                  HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
     test:
         name: Test
@@ -285,6 +286,7 @@ jobs:
                   cgo-enabled: "1"
                   github-token: ${{ secrets.GITHUB_TOKEN }}
                   goreleaser-key: ${{ secrets.GORELEASER_PRO }}
+                  homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
             - name: Upload artifacts
               uses: actions/upload-artifact@v7
@@ -364,6 +366,7 @@ jobs:
                   mode: merge
                   github-token: ${{ secrets.GITHUB_TOKEN }}
                   goreleaser-key: ${{ secrets.GORELEASER_PRO }}
+                  homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
             - name: Rolling release
               if: inputs.rolling-release-tag != ''

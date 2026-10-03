@@ -79,6 +79,7 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GORELEASER_KEY: ${{ inputs.goreleaser-key }}
+        HOMEBREW_TAP_TOKEN: ${{ inputs.homebrew-tap-token }}
         CGO_ENABLED: ${{ inputs.cgo-enabled }}
 
     - name: Run GoReleaser Pro (merge)
@@ -91,3 +92,4 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         GORELEASER_KEY: ${{ inputs.goreleaser-key }}
+        HOMEBREW_TAP_TOKEN: ${{ inputs.homebrew-tap-token }}
