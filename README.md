@@ -186,7 +186,7 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | `major-updates` | `separate` | `separate`: each major gets its own branch, tested and merged on its own. `batch`: majors join the batch. `ignore`: skip majors. |
 | `minimum-release-age` | `2 days` | Skip releases younger than this |
 | `renovate-version` | `44` | Renovate version |
-| `release-workflow` | | Workflow file to dispatch after a merge, for example `release.yaml`. It needs a `workflow_dispatch` trigger. Empty means no dispatch. |
+| `release-workflow` | | Workflow file to dispatch after a merge, for example `release.yaml`. Give several as a comma-separated list. Each needs a `workflow_dispatch` trigger. Empty means no dispatch. |
 | `admin-merge` | `false` | Merge with `--admin`. The workflow token cannot bypass branch protection. |
 | `lfs` | `false` | Git LFS checkout |
 | `runner` | | Runner label or runner group, as in the other workflows |

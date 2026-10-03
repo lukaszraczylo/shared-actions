@@ -64,7 +64,7 @@ on:
         type: string
         default: "44"
       release-workflow:
-        description: "Workflow file to dispatch after a merge, for example release.yaml. It must have a workflow_dispatch trigger and the caller needs actions: write. Empty means no dispatch."
+        description: "Workflow file to dispatch after a merge, for example release.yaml. Give several as a comma-separated list. Each must have a workflow_dispatch trigger and the caller needs actions: write. Empty means no dispatch."
         required: false
         type: string
         default: ""
@@ -529,4 +529,9 @@ jobs:
             echo "Nothing was merged, so no release."
             exit 0
           fi
-          gh workflow run "$RELEASE_WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          IFS=',' read -r -a workflows <<<"$RELEASE_WORKFLOW"
+          for workflow in "${workflows[@]}"; do
+            workflow=$(echo "$workflow" | xargs)
+            [ -n "$workflow" ] || continue
+            gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          done
