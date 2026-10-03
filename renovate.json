@@ -1,7 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "timezone": "Europe/London",
-  "enabledManagers": ["github-actions"],
+  "enabledManagers": [
+    "github-actions"
+  ],
   "semanticCommits": "enabled",
   "semanticCommitType": "chore",
   "semanticCommitScope": "deps",
@@ -10,28 +12,58 @@
   "prHourlyLimit": 0,
   "minimumReleaseAge": "3 days",
   "postUpgradeTasks": {
-    "commands": ["scripts/check-actions.sh --renovate"],
-    "fileFilters": [".validation-failed"],
+    "commands": [
+      "scripts/check-actions.sh --renovate"
+    ],
+    "fileFilters": [
+      ".validation-failed"
+    ],
     "executionMode": "branch"
   },
   "packageRules": [
     {
       "description": "This repository's own composite actions are tracked at @main by design.",
-      "matchPackageNames": ["lukaszraczylo/shared-actions"],
+      "matchPackageNames": [
+        "lukaszraczylo/shared-actions"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Tool versions in action inputs and defaults (Go, Node, GoReleaser) are policy, not pins. A bump would change what every consumer builds with.",
+      "matchDatasources": [
+        "golang-version",
+        "node-version"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "The GoReleaser version input is policy, not a pin.",
+      "matchDepNames": [
+        "goreleaser/goreleaser"
+      ],
       "enabled": false
     },
     {
       "description": "Minor and patch bumps merge on their own once the validate check is green.",
-      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pin"
+      ],
       "automerge": true,
       "automergeType": "pr",
       "platformAutomerge": true
     },
     {
       "description": "Every consumer calls these actions at @main, so a major bump waits for a human.",
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "automerge": false,
-      "addLabels": ["major"]
+      "addLabels": [
+        "major"
+      ]
     }
   ]
 }
