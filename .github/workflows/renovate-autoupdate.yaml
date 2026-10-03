@@ -272,8 +272,8 @@ jobs:
       - name: Merge the update branch locally
         id: merge
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "Lukasz Raczylo"
+          git config user.email "lukasz@raczylo.com"
           git fetch origin "$BRANCH"
           echo "head=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
           echo "subject=$(git log -1 --format=%s FETCH_HEAD)" >> "$GITHUB_OUTPUT"
