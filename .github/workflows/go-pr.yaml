@@ -78,7 +78,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           lfs: ${{ inputs.lfs }}
@@ -122,7 +122,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           lfs: ${{ inputs.lfs }}
@@ -185,7 +185,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           lfs: ${{ inputs.lfs }}
@@ -226,7 +226,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           lfs: ${{ inputs.lfs }}
@@ -264,7 +264,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           lfs: ${{ inputs.lfs }}
 
@@ -303,7 +303,7 @@ jobs:
       coverage: ${{ steps.coverage.outputs.coverage }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           lfs: ${{ inputs.lfs }}

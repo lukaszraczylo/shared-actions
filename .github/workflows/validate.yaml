@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # actionlint, then every external `uses:` reference must resolve.
       - name: Check workflows and action references
@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # The local path runs the action as it is on this branch, not at @main.
       - name: Run the go-test action on the fixture module
@@ -51,7 +51,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Run the node-build action on the fixture project
         uses: ./.github/actions/node-build
