@@ -328,7 +328,7 @@ jobs:
 
       - name: Setup Go
         if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.go == 'true'
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: ${{ inputs.go-version }}
           check-latest: true
