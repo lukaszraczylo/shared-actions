@@ -103,11 +103,25 @@ on:
         required: false
         type: boolean
         default: false
+      npm-registry-scope:
+        description: "Scope served by a private npm registry, for example '@fortawesome'. Used only when npm-registry-url and the npm-registry-token secret are also set."
+        required: false
+        type: string
+        default: ""
+      npm-registry-url:
+        description: "URL of the private npm registry, for example 'https://npm.fontawesome.com/'. Used only when npm-registry-scope and the npm-registry-token secret are also set."
+        required: false
+        type: string
+        default: ""
       runner:
         description: "Runner label, or JSON object such as {\"group\":\"ci\",\"labels\":[\"linux\"]} to select a runner group. Falls back to vars.SHARED_ACTIONS_RUNNER, then ubuntu-latest."
         required: false
         type: string
         default: ""
+    secrets:
+      npm-registry-token:
+        description: "Auth token for the private npm registry"
+        required: false
 
 concurrency:
   group: renovate-autoupdate-${{ github.repository }}
@@ -149,8 +163,18 @@ jobs:
           NODE_DIR: ${{ inputs.node-working-directory }}
           PNPM_VERSION: ${{ inputs.pnpm-version }}
           GO_MOD_TIDY: ${{ inputs.go-mod-tidy }}
+          NPM_SCOPE: ${{ inputs.npm-registry-scope }}
+          NPM_URL: ${{ inputs.npm-registry-url }}
+          NPM_TOKEN: ${{ secrets.npm-registry-token }}
           CONFIG_FILE: ${{ runner.temp }}/renovate-autoupdate-config.json
         run: |
+          # The token goes to jq through the environment, never argv, and the config print below hides it.
+          export NPMRC=""
+          if [ -n "$NPM_SCOPE" ] && [ -n "$NPM_URL" ] && [ -n "$NPM_TOKEN" ]; then
+            echo "::add-mask::$NPM_TOKEN"
+            url="${NPM_URL%/}/"
+            NPMRC=$(printf '%s:registry=%s\n//%s:_authToken=%s\n' "$NPM_SCOPE" "$url" "${url#*://}" "$NPM_TOKEN")
+          fi
           jq -n \
             --arg repo "$GITHUB_REPOSITORY" \
             --arg age "$MIN_AGE" \
@@ -212,8 +236,9 @@ jobs:
                 # Rules that disable by update type are ignored, but a version cap works.
                 + (if $majors == "ignore" then [{matchManagers: ["gomod", "npm"], allowedVersions: "<{{add major 1}}.0.0"}] else [] end)
               )
-            }' > "$CONFIG_FILE"
-          jq . "$CONFIG_FILE"
+            }
+            | if $ENV.NPMRC != "" then .npmrc = $ENV.NPMRC else . end' > "$CONFIG_FILE"
+          jq 'if has("npmrc") then .npmrc = "<redacted>" else . end' "$CONFIG_FILE"
 
       - name: Run Renovate
         uses: renovatebot/github-action@v46.3.6
@@ -366,6 +391,22 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
+
+      # The npmrc lives in RUNNER_TEMP, not the checkout, so no git command can pick the token up.
+      - name: Configure the private npm registry
+        if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.node == 'true'
+        env:
+          NPM_SCOPE: ${{ inputs.npm-registry-scope }}
+          NPM_URL: ${{ inputs.npm-registry-url }}
+          NPM_TOKEN: ${{ secrets.npm-registry-token }}
+        run: |
+          [ -n "$NPM_SCOPE" ] && [ -n "$NPM_URL" ] && [ -n "$NPM_TOKEN" ] || exit 0
+          echo "::add-mask::$NPM_TOKEN"
+          url="${NPM_URL%/}/"
+          npmrc="$RUNNER_TEMP/private-registry.npmrc"
+          (umask 077 && printf '%s:registry=%s\n//%s:_authToken=%s\n' "$NPM_SCOPE" "$url" "${url#*://}" "$NPM_TOKEN" > "$npmrc")
+          echo "NPM_CONFIG_USERCONFIG=$npmrc" >> "$GITHUB_ENV"
+          echo "Using a private npm registry for $NPM_SCOPE."
 
       - name: Install Node dependencies
         if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.node == 'true'

@@ -122,9 +122,13 @@ jobs:
 | `pnpm-version` | | pnpm version for a repo with no `packageManager` field. Empty uses the field, or the newest pnpm. |
 | `require-tests` | `false` | Fail when there is no `test` script |
 | `lfs` | `false` | Git LFS checkout |
+| `npm-registry-scope` | | Scope served by a private npm registry, for example `@fortawesome`. |
+| `npm-registry-url` | | URL of that registry, for example `https://npm.fontawesome.com/`. |
 | `runner` | | Runner label or runner group, as in the other workflows |
 
 pnpm is used when `pnpm-lock.yaml` exists, yarn for `yarn.lock`, otherwise npm. pnpm and yarn run through Corepack, so set `packageManager` in `package.json`.
+
+**Private npm registry.** Set `npm-registry-scope`, `npm-registry-url` and the `npm-registry-token` secret together; with any one missing nothing changes. The token goes into an npmrc outside the checkout (`NPM_CONFIG_USERCONFIG`), is masked in logs, and works for npm, pnpm and yarn classic. Yarn 2+ ignores npmrc and needs its own `.yarnrc.yml`.
 
 ### `go-autoupdate.yaml`
 
@@ -194,7 +198,11 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | `release-workflow` | | Workflow file to dispatch after a merge, for example `release.yaml`. Give several as a comma-separated list. Each needs a `workflow_dispatch` trigger. Empty means no dispatch. |
 | `admin-merge` | `false` | Merge with `--admin`. The workflow token cannot bypass branch protection. |
 | `lfs` | `false` | Git LFS checkout |
+| `npm-registry-scope` | | Scope served by a private npm registry, for example `@fortawesome`. |
+| `npm-registry-url` | | URL of that registry, for example `https://npm.fontawesome.com/`. |
 | `runner` | | Runner label or runner group, as in the other workflows |
+
+**Private npm registry.** Set `npm-registry-scope`, `npm-registry-url` and the `npm-registry-token` secret together; with any one missing nothing changes. Renovate and the install step both use it. The token goes into an npmrc outside the checkout (`NPM_CONFIG_USERCONFIG`), is masked in logs, and works for npm, pnpm and yarn classic. Yarn 2+ ignores npmrc and needs its own `.yarnrc.yml`.
 
 **Failing updates.** The last 50 KB of the test output goes into a comment on one issue titled "Dependency updates failing tests". Each failing branch has its own comment, updated on every run, and a header with the commit and the run link. When a branch passes and merges, its comment is removed. When no failing branch is left, the issue closes. The output is also in the run summary. Without `issues: write` the run still works, but the issue is skipped.
 
