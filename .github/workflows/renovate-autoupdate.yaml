@@ -73,6 +73,11 @@ on:
         required: false
         type: boolean
         default: false
+      log-level:
+        description: "Renovate log level: info, debug or trace. Use debug to see why Renovate fails."
+        required: false
+        type: string
+        default: "info"
       lfs:
         description: "Enable Git LFS checkout (for repos with large files)"
         required: false
@@ -189,7 +194,7 @@ jobs:
           token: ${{ github.token }}
           renovate-version: ${{ inputs.renovate-version }}
         env:
-          LOG_LEVEL: info
+          LOG_LEVEL: ${{ inputs.log-level }}
 
       - name: List the update branches
         id: list
