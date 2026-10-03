@@ -104,7 +104,7 @@ jobs:
 
 Daily dependency updates for Go and npm/pnpm/yarn projects, built on Renovate. It replaces `go-autoupdate.yaml`.
 
-1. Renovate puts every minor and patch update (direct and indirect Go modules, npm, pnpm and yarn packages) in one PR on the branch `deps-autoupdate/batch`.
+1. Renovate puts every minor and patch update (direct and indirect Go modules, npm, pnpm and yarn packages) in one PR on the branch `deps-autoupdate/batch`. Major updates are skipped unless `major-updates` says otherwise.
 2. The workflow checks out that branch and runs the tests: `go build`, `go test -race -cover` for Go, and the `package.json` scripts for Node.
 3. If everything passes, it squash-merges the PR. If a test fails, the PR stays open with a comment and Renovate retries on the next run.
 
@@ -140,7 +140,7 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | `node-working-directory` | `.` | Directory that holds `package.json` |
 | `node-scripts` | `lint,typecheck,test,build` | Scripts to run in order. A missing script is skipped. |
 | `require-node-tests` | `true` | Fail when there is no `test` script, so an untested update never merges |
-| `include-major` | `false` | Put major updates in the batch. When `false`, each major gets its own PR that is never merged automatically. |
+| `major-updates` | `ignore` | `ignore` skips major updates. `separate` opens one PR per major that never merges automatically. `batch` puts majors in the batch. |
 | `minimum-release-age` | `2 days` | Skip releases younger than this |
 | `renovate-version` | `44` | Renovate version |
 | `commit-subject` | `chore(deps): update dependencies` | Squash commit subject |

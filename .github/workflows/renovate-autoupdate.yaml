@@ -37,11 +37,11 @@ on:
         required: false
         type: boolean
         default: true
-      include-major:
-        description: "Put major updates in the batch. When false, each major update gets its own PR that is never merged automatically."
+      major-updates:
+        description: "What to do with major updates: 'ignore' skips them, 'separate' opens one PR per major that never merges automatically, 'batch' puts them in the batch."
         required: false
-        type: boolean
-        default: false
+        type: string
+        default: "ignore"
       minimum-release-age:
         description: "Skip releases younger than this, for example '2 days'"
         required: false
@@ -99,14 +99,14 @@ jobs:
       - name: Write Renovate config
         env:
           MIN_AGE: ${{ inputs.minimum-release-age }}
-          INCLUDE_MAJOR: ${{ inputs.include-major }}
+          MAJOR_UPDATES: ${{ inputs.major-updates }}
           CONFIG_FILE: ${{ runner.temp }}/renovate-autoupdate-config.json
         run: |
           jq -n \
             --arg repo "$GITHUB_REPOSITORY" \
             --arg age "$MIN_AGE" \
             --arg branch_prefix "${BATCH_BRANCH%%/*}/" \
-            --argjson include_major "$INCLUDE_MAJOR" \
+            --arg majors "$MAJOR_UPDATES" \
             '
             {
               platform: "github",
@@ -135,10 +135,12 @@ jobs:
                   matchManagers: ["gomod", "npm"],
                   groupName: "dependencies",
                   groupSlug: "batch"
-                } + (if $include_major then {} else {matchUpdateTypes: ["minor", "patch", "pin", "pinDigest", "digest"]} end)),
+                } + (if $majors == "batch" then {} else {matchUpdateTypes: ["minor", "patch", "pin", "pinDigest", "digest"]} end)),
                 {matchManagers: ["gomod"], matchDepTypes: ["indirect"], enabled: true},
                 {matchPackageNames: ["typescript"], allowedVersions: "<7"}
               ]
+              # Rules that disable by update type are ignored, but a version cap works.
+              + (if $majors == "ignore" then [{matchManagers: ["gomod", "npm"], allowedVersions: "<{{add major 1}}.0.0"}] else [] end)
             }' > "$CONFIG_FILE"
           jq . "$CONFIG_FILE"
 
