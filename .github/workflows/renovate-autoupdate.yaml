@@ -142,6 +142,7 @@ jobs:
           USE_NODE: ${{ inputs.node }}
           GO_DIR: ${{ inputs.go-working-directory }}
           NODE_DIR: ${{ inputs.node-working-directory }}
+          PNPM_VERSION: ${{ inputs.pnpm-version }}
           CONFIG_FILE: ${{ runner.temp }}/renovate-autoupdate-config.json
         run: |
           jq -n \
@@ -153,6 +154,7 @@ jobs:
             --argjson use_node "$USE_NODE" \
             --arg go_dir "$GO_DIR" \
             --arg node_dir "$NODE_DIR" \
+            --arg pnpm_version "$PNPM_VERSION" \
             '
             # A regex for files directly inside a directory, so only what the tests cover is updated.
             def prefix($d): (if $d == "." or $d == "" then "" else ($d | ltrimstr("./") | rtrimstr("/")) + "/" end) | gsub("\\."; "\\.");
@@ -163,6 +165,8 @@ jobs:
               requireConfig: "optional",
               branchPrefix: $branch_prefix,
               enabledManagers: ((if $use_go then ["gomod"] else [] end) + (if $use_node then ["npm"] else [] end)),
+              # Renovate writes the lockfile with its own pnpm. Use the version the tests install with.
+              constraints: (if $pnpm_version != "" then {pnpm: $pnpm_version} else {} end),
               gomod: {managerFilePatterns: ["/^" + prefix($go_dir) + "go\\.mod$/"]},
               npm: {managerFilePatterns: ["/^" + prefix($node_dir) + "package\\.json$/", "/^" + prefix($node_dir) + "pnpm-workspace\\.yaml$/"]},
               dependencyDashboard: false,
