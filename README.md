@@ -137,9 +137,11 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | Input | Default | Description |
 |-------|---------|-------------|
 | `go-version` | `>=1.24` | Go version |
-| `go-working-directory` | `.` | Directory that holds `go.mod` |
+| `go` | `true` | Update and test the Go module. Turn off for a repo with no Go code. |
+| `go-working-directory` | `.` | Directory that holds `go.mod`. Only this module is updated and tested. |
 | `node-version` | `22` | Node.js version |
-| `node-working-directory` | `.` | Directory that holds `package.json` |
+| `node` | `true` | Update and test the Node project. Turn off for a repo with no frontend to test. |
+| `node-working-directory` | `.` | Directory that holds `package.json`. Only this project is updated and tested. |
 | `node-scripts` | `lint,typecheck,test,build` | Scripts to run in order. A missing script is skipped. |
 | `require-node-tests` | `true` | Fail when there is no `test` script, so an untested update never merges |
 | `major-updates` | `separate` | `separate`: each major gets its own branch, tested and merged on its own. `batch`: majors join the batch. `ignore`: skip majors. |
@@ -151,6 +153,8 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | `runner` | | Runner label or runner group, as in the other workflows |
 
 **Failing updates.** The last 50 KB of the test output goes into a comment on one issue titled "Dependency updates failing tests". Each failing branch has its own comment, updated on every run, and a header with the commit and the run link. When a branch passes and merges, its comment is removed. When no failing branch is left, the issue closes. The output is also in the run summary. Without `issues: write` the run still works, but the issue is skipped.
+
+**Only what is tested is updated.** Renovate manages one Go module and one Node project: the ones in `go-working-directory` and `node-working-directory`. A second `package.json` (docs, e2e tests, another frontend) or a second `go.mod` is left alone, because nothing would test its updates.
 
 **Branches run one at a time**, so each one is tested on top of the ones merged before it. A branch that conflicts with the default branch is skipped, and Renovate rebases it on the next run.
 

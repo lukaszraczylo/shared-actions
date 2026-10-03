@@ -13,8 +13,13 @@ on:
         required: false
         type: string
         default: ">=1.24"
+      go:
+        description: "Update and test the Go module. Turn off for a repo with no Go code."
+        required: false
+        type: boolean
+        default: true
       go-working-directory:
-        description: "Directory that holds go.mod"
+        description: "Directory that holds go.mod. Only this module is updated and tested."
         required: false
         type: string
         default: "."
@@ -23,8 +28,13 @@ on:
         required: false
         type: string
         default: "22"
+      node:
+        description: "Update and test the Node project. Turn off for a repo with no frontend to test."
+        required: false
+        type: boolean
+        default: true
       node-working-directory:
-        description: "Directory that holds package.json"
+        description: "Directory that holds package.json. Only this project is updated and tested."
         required: false
         type: string
         default: "."
@@ -106,6 +116,10 @@ jobs:
         env:
           MIN_AGE: ${{ inputs.minimum-release-age }}
           MAJOR_UPDATES: ${{ inputs.major-updates }}
+          USE_GO: ${{ inputs.go }}
+          USE_NODE: ${{ inputs.node }}
+          GO_DIR: ${{ inputs.go-working-directory }}
+          NODE_DIR: ${{ inputs.node-working-directory }}
           CONFIG_FILE: ${{ runner.temp }}/renovate-autoupdate-config.json
         run: |
           jq -n \
@@ -113,14 +127,22 @@ jobs:
             --arg age "$MIN_AGE" \
             --arg branch_prefix "${BATCH_BRANCH%%/*}/" \
             --arg majors "$MAJOR_UPDATES" \
+            --argjson use_go "$USE_GO" \
+            --argjson use_node "$USE_NODE" \
+            --arg go_dir "$GO_DIR" \
+            --arg node_dir "$NODE_DIR" \
             '
+            # A regex for files directly inside a directory, so only what the tests cover is updated.
+            def prefix($d): (if $d == "." or $d == "" then "" else ($d | ltrimstr("./") | rtrimstr("/")) + "/" end) | gsub("\\."; "\\.");
             {
               platform: "github",
               repositories: [$repo],
               onboarding: false,
               requireConfig: "optional",
               branchPrefix: $branch_prefix,
-              enabledManagers: ["gomod", "npm"],
+              enabledManagers: ((if $use_go then ["gomod"] else [] end) + (if $use_node then ["npm"] else [] end)),
+              gomod: {managerFilePatterns: ["/^" + prefix($go_dir) + "go\\.mod$/"]},
+              npm: {managerFilePatterns: ["/^" + prefix($node_dir) + "package\\.json$/", "/^" + prefix($node_dir) + "pnpm-workspace\\.yaml$/"]},
               dependencyDashboard: false,
               # Branches only: with no dashboard, no PR is ever opened. The workflow opens it after the tests.
               prCreation: "approval",
@@ -248,12 +270,14 @@ jobs:
         env:
           GO_DIR: ${{ inputs.go-working-directory }}
           NODE_DIR: ${{ inputs.node-working-directory }}
+          USE_GO: ${{ inputs.go }}
+          USE_NODE: ${{ inputs.node }}
         run: |
           go=false
           node=false
           pm=npm
-          if [ -f "$GO_DIR/go.mod" ]; then go=true; fi
-          if [ -f "$NODE_DIR/package.json" ]; then
+          if [ "$USE_GO" = true ] && [ -f "$GO_DIR/go.mod" ]; then go=true; fi
+          if [ "$USE_NODE" = true ] && [ -f "$NODE_DIR/package.json" ]; then
             node=true
             if [ -f "$NODE_DIR/pnpm-lock.yaml" ]; then pm=pnpm
             elif [ -f "$NODE_DIR/yarn.lock" ]; then pm=yarn
