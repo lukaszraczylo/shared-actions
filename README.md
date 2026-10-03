@@ -104,9 +104,10 @@ jobs:
 
 Daily dependency updates for Go and npm/pnpm/yarn projects, built on Renovate. It replaces `go-autoupdate.yaml`.
 
-1. Renovate puts every minor and patch update (direct and indirect Go modules, npm, pnpm and yarn packages) in one PR on the branch `deps-autoupdate/batch`. Major updates are skipped unless `major-updates` says otherwise.
-2. The workflow checks out that branch and runs the tests: `go build`, `go test -race -cover` for Go, and the `package.json` scripts for Node.
-3. If everything passes, it squash-merges the PR. If a test fails, the PR stays open with a comment and Renovate retries on the next run.
+1. Renovate upgrades everything that can be upgraded on branches named `deps-autoupdate/*` and opens no PR. All minor and patch updates (direct and indirect Go modules, npm, pnpm and yarn packages) go on `deps-autoupdate/batch`. Each major update gets its own branch.
+2. For each branch, one at a time, the workflow merges it into the default branch locally and runs the tests on that result: `go build` and `go test -race -cover` for Go, the `package.json` scripts for Node.
+3. If the tests pass, it opens a PR and squash-merges it. If they fail, no PR is ever opened. The failure shows in the run summary, and Renovate retries on the next run.
+4. If anything merged and `release-workflow` is set, it dispatches the release once.
 
 ```yaml
 name: Update dependencies
@@ -129,7 +130,7 @@ jobs:
       release-workflow: release.yaml
 ```
 
-The workflow finds `go.mod` and `package.json` itself and tests what exists. A repo with both, such as a Go backend with a Vue frontend, gets both tested in one run.
+The workflow finds `go.mod` and `package.json` itself and tests what exists. A repo with both, such as a Go backend with a Vue frontend, gets both tested for every branch.
 
 **Inputs:**
 | Input | Default | Description |
@@ -140,14 +141,15 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | `node-working-directory` | `.` | Directory that holds `package.json` |
 | `node-scripts` | `lint,typecheck,test,build` | Scripts to run in order. A missing script is skipped. |
 | `require-node-tests` | `true` | Fail when there is no `test` script, so an untested update never merges |
-| `major-updates` | `ignore` | `ignore` skips major updates. `separate` opens one PR per major that never merges automatically. `batch` puts majors in the batch. |
+| `major-updates` | `separate` | `separate`: each major gets its own branch, tested and merged on its own. `batch`: majors join the batch. `ignore`: skip majors. |
 | `minimum-release-age` | `2 days` | Skip releases younger than this |
 | `renovate-version` | `44` | Renovate version |
-| `commit-subject` | `chore(deps): update dependencies` | Squash commit subject |
-| `release-workflow` | | Workflow file to dispatch after the merge, for example `release.yaml`. It needs a `workflow_dispatch` trigger. Empty means no dispatch. |
+| `release-workflow` | | Workflow file to dispatch after a merge, for example `release.yaml`. It needs a `workflow_dispatch` trigger. Empty means no dispatch. |
 | `admin-merge` | `false` | Merge with `--admin`. The workflow token cannot bypass branch protection. |
 | `lfs` | `false` | Git LFS checkout |
 | `runner` | | Runner label or runner group, as in the other workflows |
+
+**Branches run one at a time**, so each one is tested on top of the ones merged before it. A branch that conflicts with the default branch is skipped, and Renovate rebases it on the next run.
 
 **Package manager.** pnpm is used when `pnpm-lock.yaml` exists, yarn for `yarn.lock`, otherwise npm. The install step never changes the lockfile (`--frozen-lockfile`, `--immutable`, `npm ci`), so a lockfile that does not match `package.json` fails the run. pnpm and yarn run through Corepack, so set `packageManager` in `package.json`.
 
@@ -164,10 +166,10 @@ The defaults already cap `typescript` below 7, which breaks `vue-tsc`.
 
 **Token.** No secret is needed. Everything runs inside the calling repository with the workflow's own token, which needs `contents: write` and `pull-requests: write`. Two repository settings matter:
 
-- Settings, Actions, General: tick "Allow GitHub Actions to create and approve pull requests". Without it Renovate cannot open the PR.
-- A push made with the workflow token does not trigger other workflows, so a release workflow that runs on `push` will not start after the merge. Set `release-workflow` to dispatch it explicitly, and grant `actions: write`.
+- Settings, Actions, General: tick "Allow GitHub Actions to create and approve pull requests". Without it the workflow cannot open the PR.
+- A push made with the workflow token does not trigger other workflows, so a release workflow that runs on `push` will not start after a merge. Set `release-workflow` to dispatch it, and grant `actions: write`.
 
-**Commit message.** The squash commit uses a fixed subject and body without the words `major`, `minor` or `breaking`, because `semver-generator` matches release keywords in commit messages.
+**Commit message.** The squash commit subject is the Renovate commit message, for example `chore(deps): update dependencies`, and the body is fixed text. Neither contains `major` or `breaking`, which `semver-generator` matches in commit messages.
 
 ## Composite Actions
 

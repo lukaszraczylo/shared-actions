@@ -1,7 +1,8 @@
 name: Renovate Autoupdate
 
-# Renovate batches every Go and npm/pnpm/yarn update into one PR, the tests run
-# on that branch, and the PR merges only when they pass. Replaces go-autoupdate.
+# Renovate prepares branches with every Go and npm/pnpm/yarn update and opens no PR.
+# Each branch is merged into the default branch and tested. Only when the tests
+# pass does the workflow open a PR and merge it. Replaces go-autoupdate.
 # A renovate.json in the calling repository adds to these defaults.
 
 on:
@@ -38,10 +39,10 @@ on:
         type: boolean
         default: true
       major-updates:
-        description: "What to do with major updates: 'ignore' skips them, 'separate' opens one PR per major that never merges automatically, 'batch' puts them in the batch."
+        description: "What to do with major updates: 'separate' gives each its own branch, tested and merged on its own, 'batch' puts them in the one batch, 'ignore' skips them."
         required: false
         type: string
-        default: "ignore"
+        default: "separate"
       minimum-release-age:
         description: "Skip releases younger than this, for example '2 days'"
         required: false
@@ -52,21 +53,16 @@ on:
         required: false
         type: string
         default: "44"
-      commit-subject:
-        description: "Squash commit subject. Keep it free of release keywords such as 'major' or 'breaking', which semver-generator matches."
+      release-workflow:
+        description: "Workflow file to dispatch after a merge, for example release.yaml. It must have a workflow_dispatch trigger and the caller needs actions: write. Empty means no dispatch."
         required: false
         type: string
-        default: "chore(deps): update dependencies"
+        default: ""
       admin-merge:
         description: "Merge with --admin, which bypasses branch protection. The workflow token cannot do this, so leave it off unless you pass a token that can."
         required: false
         type: boolean
         default: false
-      release-workflow:
-        description: "Workflow file to dispatch after the merge, for example release.yaml. It must have a workflow_dispatch trigger and the caller needs actions: write. Empty means no dispatch."
-        required: false
-        type: string
-        default: ""
       lfs:
         description: "Enable Git LFS checkout (for repos with large files)"
         required: false
@@ -87,15 +83,24 @@ env:
 
 jobs:
   renovate:
-    name: Update dependencies
+    name: Prepare the updates
     runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     permissions:
       contents: write
       pull-requests: write
     outputs:
-      pr-number: ${{ steps.find-pr.outputs.pr-number }}
+      branches: ${{ steps.list.outputs.branches }}
+      base-sha: ${{ steps.base.outputs.sha }}
     steps:
+      - name: Record the default branch commit
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)
+          echo "sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$branch" --jq .sha)" >> "$GITHUB_OUTPUT"
+
       - name: Write Renovate config
         env:
           MIN_AGE: ${{ inputs.minimum-release-age }}
@@ -116,13 +121,16 @@ jobs:
               branchPrefix: $branch_prefix,
               enabledManagers: ["gomod", "npm"],
               dependencyDashboard: false,
+              # Branches only: with no dashboard, no PR is ever opened. The workflow opens it after the tests.
+              prCreation: "approval",
+              rebaseWhen: "behind-base-branch",
               semanticCommits: "enabled",
               semanticCommitType: "chore",
               semanticCommitScope: "deps",
               minimumReleaseAge: $age,
               prConcurrentLimit: 0,
               prHourlyLimit: 0,
-              recreateWhen: "always",
+              branchConcurrentLimit: 0,
               postUpdateOptions: ["gomodTidy"],
               statusCheckNames: {
                 artifactError: null,
@@ -130,17 +138,19 @@ jobs:
                 mergeConfidence: null,
                 minimumReleaseAge: null
               },
-              packageRules: [
-                ({
-                  matchManagers: ["gomod", "npm"],
-                  groupName: "dependencies",
-                  groupSlug: "batch"
-                } + (if $majors == "batch" then {} else {matchUpdateTypes: ["minor", "patch", "pin", "pinDigest", "digest"]} end)),
-                {matchManagers: ["gomod"], matchDepTypes: ["indirect"], enabled: true},
-                {matchPackageNames: ["typescript"], allowedVersions: "<7"}
-              ]
-              # Rules that disable by update type are ignored, but a version cap works.
-              + (if $majors == "ignore" then [{matchManagers: ["gomod", "npm"], allowedVersions: "<{{add major 1}}.0.0"}] else [] end)
+              packageRules: (
+                [
+                  ({
+                    matchManagers: ["gomod", "npm"],
+                    groupName: "dependencies",
+                    groupSlug: "batch"
+                  } + (if $majors == "batch" then {} else {matchUpdateTypes: ["minor", "patch", "pin", "pinDigest", "digest"]} end)),
+                  {matchManagers: ["gomod"], matchDepTypes: ["indirect"], enabled: true},
+                  {matchPackageNames: ["typescript"], allowedVersions: "<7"}
+                ]
+                # Rules that disable by update type are ignored, but a version cap works.
+                + (if $majors == "ignore" then [{matchManagers: ["gomod", "npm"], allowedVersions: "<{{add major 1}}.0.0"}] else [] end)
+              )
             }' > "$CONFIG_FILE"
           jq . "$CONFIG_FILE"
 
@@ -153,43 +163,65 @@ jobs:
         env:
           LOG_LEVEL: info
 
-      - name: Find the batch PR
-        id: find-pr
+      - name: List the update branches
+        id: list
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BATCH_BRANCH" --state open --json number --jq '.[0].number // empty')
-          echo "pr-number=$number" >> "$GITHUB_OUTPUT"
-          if [ -z "$number" ]; then
-            echo "No dependency updates to test."
-          else
-            echo "Batch PR: #$number"
-          fi
+          prefix="${BATCH_BRANCH%%/*}/"
+          all=$(gh api --paginate "repos/$GITHUB_REPOSITORY/branches" --jq '.[].name' | grep -F "$prefix" || true)
+          # The batch first, then each major update.
+          ordered=$({ printf '%s\n' "$all" | grep -Fx "$BATCH_BRANCH" || true; printf '%s\n' "$all" | grep -vFx "$BATCH_BRANCH" || true; } | sed '/^$/d')
+          json=$(printf '%s\n' "$ordered" | jq -R . | jq -sc 'map(select(length > 0))')
+          echo "branches=$json" >> "$GITHUB_OUTPUT"
+          echo "Update branches: $json"
 
-  test:
-    name: Test the update
+  test-and-merge:
+    name: Test and merge ${{ matrix.branch }}
     needs: renovate
-    if: needs.renovate.outputs.pr-number != ''
+    if: needs.renovate.outputs.branches != '[]'
     runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
-    outputs:
-      head-sha: ${{ steps.checkout-sha.outputs.sha }}
+    strategy:
+      fail-fast: false
+      # One at a time, so each branch is tested on top of the ones merged before it.
+      max-parallel: 1
+      matrix:
+        branch: ${{ fromJSON(needs.renovate.outputs.branches) }}
+    env:
+      BRANCH: ${{ matrix.branch }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout the batch branch
+      - name: Checkout the default branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ env.BATCH_BRANCH }}
-          token: ${{ github.token }}
+          fetch-depth: 0
           lfs: ${{ inputs.lfs }}
 
-      - name: Record the tested commit
-        id: checkout-sha
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Merge the update branch locally
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$BRANCH"
+          echo "head=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+          echo "subject=$(git log -1 --format=%s FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor FETCH_HEAD HEAD; then
+            echo "::notice::$BRANCH is already in the default branch."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          elif git merge --no-ff --no-commit FETCH_HEAD; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            echo "::warning::$BRANCH conflicts with the default branch. Renovate rebases it on the next run."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Run workflow prepare script
+        if: steps.merge.outputs.skip != 'true'
         shell: bash
         run: |
           if [ -f "./workflow-prepare.sh" ]; then
@@ -199,6 +231,7 @@ jobs:
 
       - name: Detect project types
         id: detect
+        if: steps.merge.outputs.skip != 'true'
         env:
           GO_DIR: ${{ inputs.go-working-directory }}
           NODE_DIR: ${{ inputs.node-working-directory }}
@@ -224,7 +257,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Setup Go
-        if: steps.detect.outputs.go == 'true'
+        if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.go == 'true'
         uses: actions/setup-go@v6
         with:
           go-version: ${{ inputs.go-version }}
@@ -233,7 +266,7 @@ jobs:
           cache-dependency-path: ${{ inputs.go-working-directory }}/go.sum
 
       - name: Build and test Go
-        if: steps.detect.outputs.go == 'true'
+        if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.go == 'true'
         working-directory: ${{ inputs.go-working-directory }}
         run: |
           go mod verify
@@ -241,13 +274,13 @@ jobs:
           go test -race -cover ./...
 
       - name: Setup Node.js
-        if: steps.detect.outputs.node == 'true'
+        if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.node == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
 
       - name: Install Node dependencies
-        if: steps.detect.outputs.node == 'true'
+        if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.node == 'true'
         working-directory: ${{ inputs.node-working-directory }}
         env:
           PM: ${{ steps.detect.outputs.pm }}
@@ -268,7 +301,7 @@ jobs:
           esac
 
       - name: Run Node scripts
-        if: steps.detect.outputs.node == 'true'
+        if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.node == 'true'
         working-directory: ${{ inputs.node-working-directory }}
         env:
           PM: ${{ steps.detect.outputs.pm }}
@@ -292,48 +325,61 @@ jobs:
             fi
           done
 
-      - name: Report the failure on the PR
-        if: failure()
+      - name: Open the PR and merge it
+        if: steps.merge.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ needs.renovate.outputs.pr-number }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
-            --body "The dependency update failed its tests, so it was not merged. See $RUN_URL. Renovate retries on the next run."
-
-  merge:
-    name: Merge the update
-    needs: [renovate, test]
-    if: needs.test.result == 'success'
-    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
-    timeout-minutes: 10
-    permissions:
-      actions: write
-      contents: write
-      pull-requests: write
-    steps:
-      - name: Squash-merge the PR
-        env:
-          # A push made with github.token does not trigger workflows, so the release is dispatched below.
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ needs.renovate.outputs.pr-number }}
-          HEAD_SHA: ${{ needs.test.outputs.head-sha }}
-          SUBJECT: ${{ inputs.commit-subject }}
+          HEAD_SHA: ${{ steps.merge.outputs.head }}
+          SUBJECT: ${{ steps.merge.outputs.subject }}
           ADMIN: ${{ inputs.admin-merge && 'true' || '' }}
         run: |
+          default=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$pr" ]; then
+            url=$(gh pr create --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base "$default" \
+              --title "$SUBJECT" \
+              --body "Automated dependency update. The tests passed on the result of merging this branch into $default.")
+            pr=${url##*/}
+          fi
+          # GitHub needs a moment to work out whether the PR can merge.
+          for _ in $(seq 1 12); do
+            state=$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json mergeable --jq .mergeable)
+            [ "$state" != UNKNOWN ] && break
+            sleep 5
+          done
           # --match-head-commit refuses to merge anything newer than the commit that was tested.
-          gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --squash --delete-branch \
+          gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --squash --delete-branch \
             --match-head-commit "$HEAD_SHA" \
             --subject "$SUBJECT" \
             --body "Automated dependency update. All tests passed." \
             ${ADMIN:+--admin}
+          echo "Merged #$pr ($BRANCH)." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Dispatch the release workflow
-        if: inputs.release-workflow != ''
+      - name: Report the failure
+        if: failure()
+        run: |
+          echo "The tests failed for \`$BRANCH\`, so no PR was opened. Renovate retries on the next run." >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Dispatch the release
+    needs: [renovate, test-and-merge]
+    if: always() && needs.renovate.outputs.branches != '[]' && inputs.release-workflow != ''
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch when the default branch moved
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_WORKFLOW: ${{ inputs.release-workflow }}
+          BASE_SHA: ${{ needs.renovate.outputs.base-sha }}
         run: |
+          # A push made with github.token does not trigger workflows, so dispatch the release explicitly.
           branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)
+          now=$(gh api "repos/$GITHUB_REPOSITORY/commits/$branch" --jq .sha)
+          if [ "$now" = "$BASE_SHA" ]; then
+            echo "Nothing was merged, so no release."
+            exit 0
+          fi
           gh workflow run "$RELEASE_WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$branch"
