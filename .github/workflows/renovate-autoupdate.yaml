@@ -1,0 +1,322 @@
+name: Renovate Autoupdate
+
+# Renovate batches every Go and npm/pnpm/yarn update into one PR, the tests run
+# on that branch, and the PR merges only when they pass. Replaces go-autoupdate.
+# A renovate.json in the calling repository adds to these defaults.
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: "Go version to use"
+        required: false
+        type: string
+        default: ">=1.24"
+      go-working-directory:
+        description: "Directory that holds go.mod"
+        required: false
+        type: string
+        default: "."
+      node-version:
+        description: "Node.js version to use"
+        required: false
+        type: string
+        default: "22"
+      node-working-directory:
+        description: "Directory that holds package.json"
+        required: false
+        type: string
+        default: "."
+      node-scripts:
+        description: "Comma-separated package.json scripts to run, in order. A script that does not exist is skipped."
+        required: false
+        type: string
+        default: "lint,typecheck,test,build"
+      require-node-tests:
+        description: "Fail when a Node project has no test script, so an untested update never merges"
+        required: false
+        type: boolean
+        default: true
+      include-major:
+        description: "Put major updates in the batch. When false, each major update gets its own PR that is never merged automatically."
+        required: false
+        type: boolean
+        default: false
+      minimum-release-age:
+        description: "Skip releases younger than this, for example '2 days'"
+        required: false
+        type: string
+        default: "2 days"
+      renovate-version:
+        description: "Renovate version for the action"
+        required: false
+        type: string
+        default: "44"
+      commit-subject:
+        description: "Squash commit subject. Keep it free of release keywords such as 'major' or 'breaking', which semver-generator matches."
+        required: false
+        type: string
+        default: "chore(deps): update dependencies"
+      admin-merge:
+        description: "Merge with --admin, which bypasses branch protection"
+        required: false
+        type: boolean
+        default: true
+      lfs:
+        description: "Enable Git LFS checkout (for repos with large files)"
+        required: false
+        type: boolean
+        default: false
+      runner:
+        description: "Runner label, or JSON object such as {\"group\":\"ci\",\"labels\":[\"linux\"]} to select a runner group. Falls back to vars.SHARED_ACTIONS_RUNNER, then ubuntu-latest."
+        required: false
+        type: string
+        default: ""
+
+concurrency:
+  group: renovate-autoupdate-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  BATCH_BRANCH: deps-autoupdate/batch
+
+jobs:
+  renovate:
+    name: Update dependencies
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      pr-number: ${{ steps.find-pr.outputs.pr-number }}
+    steps:
+      - name: Write Renovate config
+        env:
+          MIN_AGE: ${{ inputs.minimum-release-age }}
+          INCLUDE_MAJOR: ${{ inputs.include-major }}
+          CONFIG_FILE: ${{ runner.temp }}/renovate-autoupdate-config.json
+        run: |
+          jq -n \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg age "$MIN_AGE" \
+            --arg branch_prefix "${BATCH_BRANCH%%/*}/" \
+            --argjson include_major "$INCLUDE_MAJOR" \
+            '
+            {
+              platform: "github",
+              repositories: [$repo],
+              onboarding: false,
+              requireConfig: "optional",
+              branchPrefix: $branch_prefix,
+              enabledManagers: ["gomod", "npm"],
+              dependencyDashboard: false,
+              semanticCommits: "enabled",
+              semanticCommitType: "chore",
+              semanticCommitScope: "deps",
+              minimumReleaseAge: $age,
+              prConcurrentLimit: 0,
+              prHourlyLimit: 0,
+              recreateWhen: "always",
+              postUpdateOptions: ["gomodTidy"],
+              statusCheckNames: {
+                artifactError: null,
+                configValidation: null,
+                mergeConfidence: null,
+                minimumReleaseAge: null
+              },
+              packageRules: [
+                ({
+                  matchManagers: ["gomod", "npm"],
+                  groupName: "dependencies",
+                  groupSlug: "batch"
+                } + (if $include_major then {} else {matchUpdateTypes: ["minor", "patch", "pin", "pinDigest", "digest"]} end)),
+                {matchManagers: ["gomod"], matchDepTypes: ["indirect"], enabled: true},
+                {matchPackageNames: ["typescript"], allowedVersions: "<7"}
+              ]
+            }' > "$CONFIG_FILE"
+          jq . "$CONFIG_FILE"
+
+      - name: Run Renovate
+        uses: renovatebot/github-action@v46.3.6
+        with:
+          configurationFile: ${{ runner.temp }}/renovate-autoupdate-config.json
+          token: ${{ secrets.RENOVATE_TOKEN || secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          renovate-version: ${{ inputs.renovate-version }}
+        env:
+          LOG_LEVEL: info
+
+      - name: Find the batch PR
+        id: find-pr
+        env:
+          GH_TOKEN: ${{ secrets.RENOVATE_TOKEN || secrets.HOMEBREW_TAP_TOKEN || github.token }}
+        run: |
+          number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BATCH_BRANCH" --state open --json number --jq '.[0].number // empty')
+          echo "pr-number=$number" >> "$GITHUB_OUTPUT"
+          if [ -z "$number" ]; then
+            echo "No dependency updates to test."
+          else
+            echo "Batch PR: #$number"
+          fi
+
+  test:
+    name: Test the update
+    needs: renovate
+    if: needs.renovate.outputs.pr-number != ''
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      head-sha: ${{ steps.checkout-sha.outputs.sha }}
+    steps:
+      - name: Checkout the batch branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.BATCH_BRANCH }}
+          token: ${{ secrets.RENOVATE_TOKEN || secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          lfs: ${{ inputs.lfs }}
+
+      - name: Record the tested commit
+        id: checkout-sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Run workflow prepare script
+        shell: bash
+        run: |
+          if [ -f "./workflow-prepare.sh" ]; then
+            chmod +x ./workflow-prepare.sh
+            ./workflow-prepare.sh
+          fi
+
+      - name: Detect project types
+        id: detect
+        env:
+          GO_DIR: ${{ inputs.go-working-directory }}
+          NODE_DIR: ${{ inputs.node-working-directory }}
+        run: |
+          go=false
+          node=false
+          pm=npm
+          if [ -f "$GO_DIR/go.mod" ]; then go=true; fi
+          if [ -f "$NODE_DIR/package.json" ]; then
+            node=true
+            if [ -f "$NODE_DIR/pnpm-lock.yaml" ]; then pm=pnpm
+            elif [ -f "$NODE_DIR/yarn.lock" ]; then pm=yarn
+            fi
+          fi
+          if [ "$go" = false ] && [ "$node" = false ]; then
+            echo "::error::Neither $GO_DIR/go.mod nor $NODE_DIR/package.json exists, so there is nothing to test."
+            exit 1
+          fi
+          {
+            echo "go=$go"
+            echo "node=$node"
+            echo "pm=$pm"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Setup Go
+        if: steps.detect.outputs.go == 'true'
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ inputs.go-version }}
+          check-latest: true
+          cache: true
+          cache-dependency-path: ${{ inputs.go-working-directory }}/go.sum
+
+      - name: Build and test Go
+        if: steps.detect.outputs.go == 'true'
+        working-directory: ${{ inputs.go-working-directory }}
+        run: |
+          go mod verify
+          go build ./...
+          go test -race -cover ./...
+
+      - name: Setup Node.js
+        if: steps.detect.outputs.node == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install Node dependencies
+        if: steps.detect.outputs.node == 'true'
+        working-directory: ${{ inputs.node-working-directory }}
+        env:
+          PM: ${{ steps.detect.outputs.pm }}
+        run: |
+          # The lockfile must match what Renovate wrote: install without updating it.
+          case "$PM" in
+            pnpm | yarn)
+              command -v corepack >/dev/null || npm install --global corepack
+              corepack enable "$PM"
+              ;;
+          esac
+          case "$PM" in
+            pnpm) pnpm install --frozen-lockfile ;;
+            yarn) yarn install --immutable ;;
+            npm)
+              if [ -f package-lock.json ]; then npm ci; else npm install; fi
+              ;;
+          esac
+
+      - name: Run Node scripts
+        if: steps.detect.outputs.node == 'true'
+        working-directory: ${{ inputs.node-working-directory }}
+        env:
+          PM: ${{ steps.detect.outputs.pm }}
+          SCRIPTS: ${{ inputs.node-scripts }}
+          REQUIRE_TESTS: ${{ inputs.require-node-tests }}
+        run: |
+          if [ "$REQUIRE_TESTS" = true ] && ! jq -e '.scripts.test' package.json >/dev/null; then
+            echo "::error::package.json has no test script. Add one, or set require-node-tests to false."
+            exit 1
+          fi
+          IFS=',' read -r -a scripts <<<"$SCRIPTS"
+          for script in "${scripts[@]}"; do
+            script=$(echo "$script" | xargs)
+            [ -n "$script" ] || continue
+            if jq -e --arg s "$script" '.scripts[$s]' package.json >/dev/null; then
+              echo "::group::$PM run $script"
+              "$PM" run "$script"
+              echo "::endgroup::"
+            else
+              echo "::notice::No '$script' script, skipping."
+            fi
+          done
+
+      - name: Report the failure on the PR
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.RENOVATE_TOKEN || secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          PR: ${{ needs.renovate.outputs.pr-number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
+            --body "The dependency update failed its tests, so it was not merged. See $RUN_URL. Renovate retries on the next run."
+
+  merge:
+    name: Merge the update
+    needs: [renovate, test]
+    if: needs.test.result == 'success'
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Squash-merge the PR
+        env:
+          # A PAT or App token makes the merge push trigger the release workflow. github.token does not.
+          GH_TOKEN: ${{ secrets.RENOVATE_TOKEN || secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          PR: ${{ needs.renovate.outputs.pr-number }}
+          HEAD_SHA: ${{ needs.test.outputs.head-sha }}
+          SUBJECT: ${{ inputs.commit-subject }}
+          ADMIN: ${{ inputs.admin-merge && 'true' || '' }}
+        run: |
+          # --match-head-commit refuses to merge anything newer than the commit that was tested.
+          gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --squash --delete-branch \
+            --match-head-commit "$HEAD_SHA" \
+            --subject "$SUBJECT" \
+            --body "Automated dependency update. All tests passed." \
+            ${ADMIN:+--admin}

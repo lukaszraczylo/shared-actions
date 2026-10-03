@@ -88,7 +88,7 @@ jobs:
 
 ### `go-autoupdate.yaml`
 
-Automatic dependency updates.
+Automatic dependency updates for Go. See `renovate-autoupdate.yaml` for the Renovate-based replacement that also covers npm, pnpm and yarn.
 
 ```yaml
 jobs:
@@ -99,6 +99,70 @@ jobs:
       release-workflow: "release.yaml"
     secrets: inherit
 ```
+
+### `renovate-autoupdate.yaml`
+
+Daily dependency updates for Go and npm/pnpm/yarn projects, built on Renovate. It replaces `go-autoupdate.yaml`.
+
+1. Renovate puts every minor and patch update (direct and indirect Go modules, npm, pnpm and yarn packages) in one PR on the branch `deps-autoupdate/batch`.
+2. The workflow checks out that branch and runs the tests: `go build`, `go test -race -cover` for Go, and the `package.json` scripts for Node.
+3. If everything passes, it squash-merges the PR. If a test fails, the PR stays open with a comment and Renovate retries on the next run.
+
+```yaml
+name: Update dependencies
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    uses: lukaszraczylo/shared-actions/.github/workflows/renovate-autoupdate.yaml@main
+    with:
+      go-version: ">=1.24"
+    secrets: inherit
+```
+
+The workflow finds `go.mod` and `package.json` itself and tests what exists. A repo with both, such as a Go backend with a Vue frontend, gets both tested in one run.
+
+**Inputs:**
+| Input | Default | Description |
+|-------|---------|-------------|
+| `go-version` | `>=1.24` | Go version |
+| `go-working-directory` | `.` | Directory that holds `go.mod` |
+| `node-version` | `22` | Node.js version |
+| `node-working-directory` | `.` | Directory that holds `package.json` |
+| `node-scripts` | `lint,typecheck,test,build` | Scripts to run in order. A missing script is skipped. |
+| `require-node-tests` | `true` | Fail when there is no `test` script, so an untested update never merges |
+| `include-major` | `false` | Put major updates in the batch. When `false`, each major gets its own PR that is never merged automatically. |
+| `minimum-release-age` | `2 days` | Skip releases younger than this |
+| `renovate-version` | `44` | Renovate version |
+| `commit-subject` | `chore(deps): update dependencies` | Squash commit subject |
+| `admin-merge` | `true` | Merge with `--admin` |
+| `lfs` | `false` | Git LFS checkout |
+| `runner` | | Runner label or runner group, as in the other workflows |
+
+**Package manager.** pnpm is used when `pnpm-lock.yaml` exists, yarn for `yarn.lock`, otherwise npm. The install step never changes the lockfile (`--frozen-lockfile`, `--immutable`, `npm ci`), so a lockfile that does not match `package.json` fails the run. pnpm and yarn run through Corepack, so set `packageManager` in `package.json`.
+
+**Per-project rules.** Put a `renovate.json` in the calling repository. Renovate reads it and merges it with the defaults, so no extra input is needed:
+
+```json
+{
+  "ignoreDeps": ["some/package"],
+  "packageRules": [{ "matchPackageNames": ["vite"], "enabled": false }]
+}
+```
+
+The defaults already cap `typescript` below 7, which breaks `vue-tsc`.
+
+**Token.** The workflow uses `RENOVATE_TOKEN`, then `HOMEBREW_TAP_TOKEN`, then `github.token`. With `github.token` the merge push does not trigger other workflows, so a release workflow on `push` will not run. Use a PAT or App token for repositories that release on push.
+
+**Commit message.** The squash commit uses a fixed subject and body without the words `major`, `minor` or `breaking`, because `semver-generator` matches release keywords in commit messages.
 
 ## Composite Actions
 
