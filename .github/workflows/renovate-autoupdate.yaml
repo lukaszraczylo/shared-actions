@@ -134,7 +134,8 @@ jobs:
               prConcurrentLimit: 0,
               prHourlyLimit: 0,
               branchConcurrentLimit: 0,
-              postUpdateOptions: ["gomodTidy"],
+              # A Go major update changes the import path: rewrite the imports, so the build tests the real update.
+              postUpdateOptions: ["gomodTidy", "gomodUpdateImportPaths"],
               statusCheckNames: {
                 artifactError: null,
                 configValidation: null,
@@ -149,6 +150,8 @@ jobs:
                     groupSlug: "batch"
                   } + (if $majors == "batch" then {} else {matchUpdateTypes: ["minor", "patch", "pin", "pinDigest", "digest"]} end)),
                   {matchManagers: ["gomod"], matchDepTypes: ["indirect"], enabled: true},
+                  # The parent module chooses the major version of an indirect dependency.
+                  {matchManagers: ["gomod"], matchDepTypes: ["indirect"], allowedVersions: "<{{add major 1}}.0.0"},
                   {matchPackageNames: ["typescript"], allowedVersions: "<7"}
                 ]
                 # Rules that disable by update type are ignored, but a version cap works.
