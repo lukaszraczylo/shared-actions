@@ -124,6 +124,8 @@ jobs:
               dependencyDashboard: false,
               # Branches only: with no dashboard, no PR is ever opened. The workflow opens it after the tests.
               prCreation: "approval",
+              # A PR closed after a merge or by hand must not stop a later update of the same package.
+              recreateWhen: "always",
               rebaseWhen: "behind-base-branch",
               semanticCommits: "enabled",
               semanticCommitType: "chore",
