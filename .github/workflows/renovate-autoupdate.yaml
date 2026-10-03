@@ -186,6 +186,12 @@ jobs:
             echo "::add-mask::$NPM_TOKEN"
             url="${NPM_URL%/}/"
             NPMRC=$(printf '%s:registry=%s\n//%s:_authToken=%s\n' "$NPM_SCOPE" "$url" "${url#*://}" "$NPM_TOKEN")
+            # Renovate writes its npmrc option into the package directory, but a pnpm workspace install reads
+            # only the root, so the lockfile update gets a 404. The Renovate container shares /tmp with the host.
+            RENOVATE_NPMRC_FILE="/tmp/renovate-npmrc-$GITHUB_RUN_ID"
+            (umask 022 && printf '%s\n' "$NPMRC" > "$RENOVATE_NPMRC_FILE")
+            echo "RENOVATE_NPMRC_FILE=$RENOVATE_NPMRC_FILE" >> "$GITHUB_ENV"
+            export RENOVATE_NPMRC_FILE
           fi
           jq -n \
             --arg repo "$GITHUB_REPOSITORY" \
@@ -258,7 +264,7 @@ jobs:
                 + (if $majors == "ignore" then [{matchManagers: ["gomod", "npm"], allowedVersions: "<{{add major 1}}.0.0"}] else [] end)
               )
             }
-            | if $ENV.NPMRC != "" then .npmrc = $ENV.NPMRC else . end' > "$CONFIG_FILE"
+            | if $ENV.NPMRC != "" then .npmrc = $ENV.NPMRC | .customEnvVariables = {NPM_CONFIG_USERCONFIG: $ENV.RENOVATE_NPMRC_FILE} else . end' > "$CONFIG_FILE"
           jq 'if has("npmrc") then .npmrc = "<redacted>" else . end' "$CONFIG_FILE"
 
       - name: Run Renovate
@@ -269,6 +275,10 @@ jobs:
           renovate-version: ${{ inputs.renovate-version }}
         env:
           LOG_LEVEL: ${{ inputs.log-level }}
+
+      - name: Remove the registry token file
+        if: always() && env.RENOVATE_NPMRC_FILE != ''
+        run: rm -f "$RENOVATE_NPMRC_FILE"
 
       - name: List the update branches
         id: list
