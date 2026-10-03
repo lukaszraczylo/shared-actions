@@ -58,10 +58,15 @@ on:
         type: string
         default: "chore(deps): update dependencies"
       admin-merge:
-        description: "Merge with --admin, which bypasses branch protection"
+        description: "Merge with --admin, which bypasses branch protection. The workflow token cannot do this, so leave it off unless you pass a token that can."
         required: false
         type: boolean
-        default: true
+        default: false
+      release-workflow:
+        description: "Workflow file to dispatch after the merge, for example release.yaml. It must have a workflow_dispatch trigger and the caller needs actions: write. Empty means no dispatch."
+        required: false
+        type: string
+        default: ""
       lfs:
         description: "Enable Git LFS checkout (for repos with large files)"
         required: false
@@ -141,7 +146,7 @@ jobs:
         uses: renovatebot/github-action@v46.3.6
         with:
           configurationFile: ${{ runner.temp }}/renovate-autoupdate-config.json
-          token: ${{ secrets.RENOVATE_TOKEN || secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          token: ${{ github.token }}
           renovate-version: ${{ inputs.renovate-version }}
         env:
           LOG_LEVEL: info
@@ -149,7 +154,7 @@ jobs:
       - name: Find the batch PR
         id: find-pr
         env:
-          GH_TOKEN: ${{ secrets.RENOVATE_TOKEN || secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BATCH_BRANCH" --state open --json number --jq '.[0].number // empty')
           echo "pr-number=$number" >> "$GITHUB_OUTPUT"
@@ -175,7 +180,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ env.BATCH_BRANCH }}
-          token: ${{ secrets.RENOVATE_TOKEN || secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          token: ${{ github.token }}
           lfs: ${{ inputs.lfs }}
 
       - name: Record the tested commit
@@ -288,7 +293,7 @@ jobs:
       - name: Report the failure on the PR
         if: failure()
         env:
-          GH_TOKEN: ${{ secrets.RENOVATE_TOKEN || secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
           PR: ${{ needs.renovate.outputs.pr-number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -302,13 +307,14 @@ jobs:
     runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
     timeout-minutes: 10
     permissions:
+      actions: write
       contents: write
       pull-requests: write
     steps:
       - name: Squash-merge the PR
         env:
-          # A PAT or App token makes the merge push trigger the release workflow. github.token does not.
-          GH_TOKEN: ${{ secrets.RENOVATE_TOKEN || secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          # A push made with github.token does not trigger workflows, so the release is dispatched below.
+          GH_TOKEN: ${{ github.token }}
           PR: ${{ needs.renovate.outputs.pr-number }}
           HEAD_SHA: ${{ needs.test.outputs.head-sha }}
           SUBJECT: ${{ inputs.commit-subject }}
@@ -320,3 +326,12 @@ jobs:
             --subject "$SUBJECT" \
             --body "Automated dependency update. All tests passed." \
             ${ADMIN:+--admin}
+
+      - name: Dispatch the release workflow
+        if: inputs.release-workflow != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_WORKFLOW: ${{ inputs.release-workflow }}
+        run: |
+          branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)
+          gh workflow run "$RELEASE_WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$branch"

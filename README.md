@@ -117,6 +117,7 @@ on:
     - cron: "0 3 * * *"
 
 permissions:
+  actions: write       # only to dispatch release-workflow
   contents: write
   pull-requests: write
 
@@ -125,7 +126,7 @@ jobs:
     uses: lukaszraczylo/shared-actions/.github/workflows/renovate-autoupdate.yaml@main
     with:
       go-version: ">=1.24"
-    secrets: inherit
+      release-workflow: release.yaml
 ```
 
 The workflow finds `go.mod` and `package.json` itself and tests what exists. A repo with both, such as a Go backend with a Vue frontend, gets both tested in one run.
@@ -143,7 +144,8 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | `minimum-release-age` | `2 days` | Skip releases younger than this |
 | `renovate-version` | `44` | Renovate version |
 | `commit-subject` | `chore(deps): update dependencies` | Squash commit subject |
-| `admin-merge` | `true` | Merge with `--admin` |
+| `release-workflow` | | Workflow file to dispatch after the merge, for example `release.yaml`. It needs a `workflow_dispatch` trigger. Empty means no dispatch. |
+| `admin-merge` | `false` | Merge with `--admin`. The workflow token cannot bypass branch protection. |
 | `lfs` | `false` | Git LFS checkout |
 | `runner` | | Runner label or runner group, as in the other workflows |
 
@@ -160,7 +162,10 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 
 The defaults already cap `typescript` below 7, which breaks `vue-tsc`.
 
-**Token.** The workflow uses `RENOVATE_TOKEN`, then `HOMEBREW_TAP_TOKEN`, then `github.token`. With `github.token` the merge push does not trigger other workflows, so a release workflow on `push` will not run. Use a PAT or App token for repositories that release on push.
+**Token.** No secret is needed. Everything runs inside the calling repository with the workflow's own token, which needs `contents: write` and `pull-requests: write`. Two repository settings matter:
+
+- Settings, Actions, General: tick "Allow GitHub Actions to create and approve pull requests". Without it Renovate cannot open the PR.
+- A push made with the workflow token does not trigger other workflows, so a release workflow that runs on `push` will not start after the merge. Set `release-workflow` to dispatch it explicitly, and grant `actions: write`.
 
 **Commit message.** The squash commit uses a fixed subject and body without the words `major`, `minor` or `breaking`, because `semver-generator` matches release keywords in commit messages.
 
