@@ -65,5 +65,11 @@
         "major"
       ]
     }
-  ]
+  ],
+  "statusCheckNames": {
+    "artifactError": null,
+    "configValidation": null,
+    "mergeConfidence": null,
+    "minimumReleaseAge": null
+  }
 }
