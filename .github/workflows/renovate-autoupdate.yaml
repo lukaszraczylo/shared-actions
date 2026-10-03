@@ -28,6 +28,16 @@ on:
         required: false
         type: string
         default: "22"
+      go-prepare-command:
+        description: "Shell commands to run before the Go tests, for example installing a CLI. To put a tool on PATH, append its directory to $GITHUB_PATH."
+        required: false
+        type: string
+        default: ""
+      go-test-command:
+        description: "Replaces the default Go build and test commands, for example 'encore test ./...' for an Encore app. It runs in go-working-directory."
+        required: false
+        type: string
+        default: ""
       node:
         description: "Update and test the Node project. Turn off for a repo with no frontend to test."
         required: false
@@ -314,15 +324,30 @@ jobs:
           cache: true
           cache-dependency-path: ${{ inputs.go-working-directory }}/go.sum
 
+      - name: Prepare Go
+        if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.go == 'true' && inputs.go-prepare-command != ''
+        working-directory: ${{ inputs.go-working-directory }}
+        env:
+          GO_PREPARE_COMMAND: ${{ inputs.go-prepare-command }}
+        run: |
+          set -o pipefail
+          bash -c "$GO_PREPARE_COMMAND" 2>&1 | tee -a "$RUNNER_TEMP/test-output.log"
+
       - name: Build and test Go
         if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.go == 'true'
         working-directory: ${{ inputs.go-working-directory }}
+        env:
+          GO_TEST_COMMAND: ${{ inputs.go-test-command }}
         run: |
           set -o pipefail
           {
             go mod verify
-            go build ./...
-            go test -race -cover ./...
+            if [ -n "$GO_TEST_COMMAND" ]; then
+              bash -c "$GO_TEST_COMMAND"
+            else
+              go build ./...
+              go test -race -cover ./...
+            fi
           } 2>&1 | tee -a "$RUNNER_TEMP/test-output.log"
 
       - name: Setup Node.js

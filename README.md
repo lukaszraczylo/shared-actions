@@ -179,6 +179,8 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | `go-version` | `>=1.24` | Go version |
 | `go` | `true` | Update and test the Go module. Turn off for a repo with no Go code. |
 | `go-working-directory` | `.` | Directory that holds `go.mod`. Only this module is updated and tested. |
+| `go-prepare-command` | | Shell commands to run before the Go tests, for example installing a CLI. Append a tool directory to `$GITHUB_PATH` to put it on `PATH`. |
+| `go-test-command` | | Replaces the default `go build` and `go test`, for example `encore test ./...` for an Encore app. |
 | `node-version` | `22` | Node.js version |
 | `node` | `true` | Update and test the Node project. Turn off for a repo with no frontend to test. |
 | `node-working-directory` | `.` | Directory that holds `package.json`. Only this project is updated and tested. |
