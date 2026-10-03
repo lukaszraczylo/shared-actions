@@ -16,6 +16,16 @@ on:
         required: false
         type: string
         default: "."
+      workspace:
+        description: "The project is a pnpm workspace. working-directory then holds pnpm-workspace.yaml and pnpm-lock.yaml, and needs no package.json. Dependencies install once there, and scripts run in each of packages."
+        required: false
+        type: boolean
+        default: false
+      packages:
+        description: "With workspace, comma-separated workspace package directories, relative to working-directory."
+        required: false
+        type: string
+        default: ""
       scripts:
         description: "Comma-separated package.json scripts to run, in order. A script that does not exist is skipped."
         required: false
@@ -118,7 +128,33 @@ jobs:
       - name: Detect the package manager
         id: detect
         working-directory: ${{ inputs.working-directory }}
+        env:
+          WORKSPACE: ${{ inputs.workspace }}
+          PACKAGES: ${{ inputs.packages }}
         run: |
+          if [ "$WORKSPACE" = true ]; then
+            if [ ! -f pnpm-workspace.yaml ] || [ ! -f pnpm-lock.yaml ]; then
+              echo "::error::workspace needs pnpm-workspace.yaml and pnpm-lock.yaml in ${{ inputs.working-directory }}."
+              exit 1
+            fi
+            count=0
+            IFS=',' read -r -a packages <<<"$PACKAGES"
+            for package in "${packages[@]}"; do
+              package=$(echo "$package" | xargs)
+              [ -n "$package" ] || continue
+              if [ ! -f "$package/package.json" ]; then
+                echo "::error::packages lists $package, but ${{ inputs.working-directory }}/$package/package.json does not exist."
+                exit 1
+              fi
+              count=$((count + 1))
+            done
+            if [ "$count" -eq 0 ]; then
+              echo "::error::workspace needs packages: the packages to check."
+              exit 1
+            fi
+            echo "pm=pnpm" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ ! -f package.json ]; then
             echo "::error::No package.json in ${{ inputs.working-directory }}."
             exit 1
@@ -179,24 +215,43 @@ jobs:
           PM: ${{ steps.detect.outputs.pm }}
           SCRIPTS: ${{ inputs.scripts }}
           REQUIRE_TESTS: ${{ inputs.require-tests }}
+          WORKSPACE: ${{ inputs.workspace }}
+          PACKAGES: ${{ inputs.packages }}
         run: |
-          if [ "$REQUIRE_TESTS" = true ] && ! jq -e '.scripts.test' package.json >/dev/null; then
-            echo "::error::package.json has no test script."
-            exit 1
+          # A single project is the one package ".". A workspace is each listed package.
+          packages=(.)
+          if [ "$WORKSPACE" = true ]; then
+            IFS=',' read -r -a packages <<<"$PACKAGES"
+          fi
+          if [ "$REQUIRE_TESTS" = true ]; then
+            for package in "${packages[@]}"; do
+              package=$(echo "$package" | xargs)
+              [ -n "$package" ] || continue
+              if ! jq -e '.scripts.test' "$package/package.json" >/dev/null; then
+                echo "::error::$package/package.json has no test script."
+                exit 1
+              fi
+            done
           fi
           ran=()
           IFS=',' read -r -a scripts <<<"$SCRIPTS"
           for script in "${scripts[@]}"; do
             script=$(echo "$script" | xargs)
             [ -n "$script" ] || continue
-            if jq -e --arg s "$script" '.scripts[$s]' package.json >/dev/null; then
-              echo "::group::$PM run $script"
-              "$PM" run "$script"
-              echo "::endgroup::"
-              ran+=("$script")
-            else
-              echo "::notice::No '$script' script, skipping."
-            fi
+            for package in "${packages[@]}"; do
+              package=$(echo "$package" | xargs)
+              [ -n "$package" ] || continue
+              where=""
+              [ "$package" = . ] || where=" ($package)"
+              if jq -e --arg s "$script" '.scripts[$s]' "$package/package.json" >/dev/null; then
+                echo "::group::$PM run $script$where"
+                (cd "$package" && "$PM" run "$script")
+                echo "::endgroup::"
+                ran+=("$script$where")
+              else
+                echo "::notice::No '$script' script$where, skipping."
+              fi
+            done
           done
           if [ "${#ran[@]}" -eq 0 ]; then
             echo "::warning::None of the scripts ($SCRIPTS) exist in package.json, so nothing was checked."

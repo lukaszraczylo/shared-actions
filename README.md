@@ -117,7 +117,9 @@ jobs:
 | Input | Default | Description |
 |-------|---------|-------------|
 | `node-version` | `22` | Node.js version |
-| `working-directory` | `.` | Directory that holds `package.json` |
+| `working-directory` | `.` | Directory that holds `package.json`. With `workspace`, the directory that holds `pnpm-workspace.yaml` and `pnpm-lock.yaml`. |
+| `workspace` | `false` | pnpm workspace: install once in `working-directory`, then run `scripts` in each of `packages`. `working-directory` needs no `package.json`. |
+| `packages` | | With `workspace`, comma-separated package directories relative to `working-directory`, for example `admin,public,packages/ui` |
 | `scripts` | `lint,typecheck,test,build` | Scripts to run in order. A missing script is skipped. |
 | `pnpm-version` | | pnpm version for a repo with no `packageManager` field. Empty uses the field, or the newest pnpm. |
 | `require-tests` | `false` | Fail when there is no `test` script |
@@ -126,7 +128,7 @@ jobs:
 | `npm-registry-url` | | URL of that registry, for example `https://npm.fontawesome.com/`. |
 | `runner` | | Runner label or runner group, as in the other workflows |
 
-pnpm is used when `pnpm-lock.yaml` exists, yarn for `yarn.lock`, otherwise npm. pnpm and yarn run through Corepack, so set `packageManager` in `package.json`.
+pnpm is used when `pnpm-lock.yaml` exists, yarn for `yarn.lock`, otherwise npm. pnpm and yarn run through Corepack, so set `packageManager` in `package.json`. A workspace with no root `package.json` has no such field, so set `pnpm-version`. With `require-tests`, every listed package needs a `test` script.
 
 **Private npm registry.** Set `npm-registry-scope`, `npm-registry-url` and the `npm-registry-token` secret together; with any one missing nothing changes. The token goes into an npmrc outside the checkout (`NPM_CONFIG_USERCONFIG`), is masked in logs, and works for npm, pnpm and yarn classic. Yarn 2+ ignores npmrc and needs its own `.yarnrc.yml`.
 
@@ -188,7 +190,9 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | `go-test-command` | | Replaces the default `go build` and `go test`, for example `encore test ./...` for an Encore app. |
 | `node-version` | `22` | Node.js version |
 | `node` | `true` | Update and test the Node project. Turn off for a repo with no frontend to test. |
-| `node-working-directory` | `.` | Directory that holds `package.json`. Only this project is updated and tested. |
+| `node-working-directory` | `.` | Directory that holds `package.json`. Only this project is updated and tested. With `node-workspace`, the directory that holds the workspace files. |
+| `node-workspace` | `false` | pnpm workspace: `node-working-directory` holds `pnpm-workspace.yaml` and `pnpm-lock.yaml` and needs no `package.json`. Install once there, then run `node-scripts` in each of `node-packages`. |
+| `node-packages` | | With `node-workspace`, comma-separated package directories relative to `node-working-directory`, for example `admin,public,packages/ui`. Only these are updated and tested. |
 | `node-scripts` | `lint,typecheck,test,build` | Scripts to run in order. A missing script is skipped. |
 | `pnpm-version` | | pnpm version for a repo with no `packageManager` field. Empty uses the field, or the newest pnpm. |
 | `require-node-tests` | `true` | Fail when there is no `test` script, so an untested update never merges |
@@ -206,11 +210,11 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 
 **Failing updates.** The last 50 KB of the test output goes into a comment on one issue titled "Dependency updates failing tests". Each failing branch has its own comment, updated on every run, and a header with the commit and the run link. When a branch passes and merges, its comment is removed. When no failing branch is left, the issue closes. The output is also in the run summary. Without `issues: write` the run still works, but the issue is skipped.
 
-**Only what is tested is updated.** Renovate manages one Go module and one Node project: the ones in `go-working-directory` and `node-working-directory`. A second `package.json` (docs, e2e tests, another frontend) or a second `go.mod` is left alone, because nothing would test its updates.
+**Only what is tested is updated.** Renovate manages one Go module and one Node project: the ones in `go-working-directory` and `node-working-directory`. A second `package.json` (docs, e2e tests, another frontend) or a second `go.mod` is left alone, because nothing would test its updates. In a workspace the same rule applies to packages: only those in `node-packages` are updated, plus `pnpm-workspace.yaml` and the root `pnpm-lock.yaml`.
 
 **Branches run one at a time**, so each one is tested on top of the ones merged before it. A branch that conflicts with the default branch is skipped, and Renovate rebases it on the next run.
 
-**Package manager.** pnpm is used when `pnpm-lock.yaml` exists, yarn for `yarn.lock`, otherwise npm. The install step never changes the lockfile (`--frozen-lockfile`, `--immutable`, `npm ci`), so a lockfile that does not match `package.json` fails the run. pnpm and yarn run through Corepack, so set `packageManager` in `package.json`.
+**Package manager.** pnpm is used when `pnpm-lock.yaml` exists, yarn for `yarn.lock`, otherwise npm. The install step never changes the lockfile (`--frozen-lockfile`, `--immutable`, `npm ci`), so a lockfile that does not match `package.json` fails the run. pnpm and yarn run through Corepack, so set `packageManager` in `package.json`. A workspace with no root `package.json` has no such field, so set `pnpm-version`. With `require-node-tests`, every listed package needs a `test` script.
 
 **Per-project rules.** Put a `renovate.json` in the calling repository. Renovate reads it and merges it with the defaults, so no extra input is needed:
 
