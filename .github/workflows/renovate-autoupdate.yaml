@@ -561,11 +561,21 @@ jobs:
             exit 0
           fi
           # --match-head-commit refuses to merge anything newer than the commit that was tested.
-          if ! gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --squash --delete-branch \
-            --match-head-commit "$HEAD_SHA" \
-            --subject "$SUBJECT" \
-            --body "Automated dependency update. All tests passed." \
-            ${ADMIN:+--admin}; then
+          # GitHub answers 5xx now and then; a failed call may still have merged, so check the state before retrying.
+          merged=false
+          for _ in 1 2 3; do
+            if gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --squash --delete-branch \
+              --match-head-commit "$HEAD_SHA" \
+              --subject "$SUBJECT" \
+              --body "Automated dependency update. All tests passed." \
+              ${ADMIN:+--admin}; then
+              merged=true
+              break
+            fi
+            sleep 10
+            [ "$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json state --jq .state)" = MERGED ] && { merged=true; break; }
+          done
+          if [ "$merged" != true ]; then
             gh pr close "$pr" --repo "$GITHUB_REPOSITORY" --comment "The tests passed, but GitHub refused the merge. See the workflow run. The next run tries again."
             exit 1
           fi
