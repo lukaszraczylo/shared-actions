@@ -80,6 +80,7 @@ concurrency:
 
 env:
   BATCH_BRANCH: deps-autoupdate/batch
+  ISSUE_TITLE: Dependency updates failing tests
 
 jobs:
   renovate:
@@ -184,6 +185,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write
+      issues: write
       pull-requests: write
     strategy:
       fail-fast: false
@@ -269,9 +271,12 @@ jobs:
         if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.go == 'true'
         working-directory: ${{ inputs.go-working-directory }}
         run: |
-          go mod verify
-          go build ./...
-          go test -race -cover ./...
+          set -o pipefail
+          {
+            go mod verify
+            go build ./...
+            go test -race -cover ./...
+          } 2>&1 | tee -a "$RUNNER_TEMP/test-output.log"
 
       - name: Setup Node.js
         if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.node == 'true'
@@ -285,20 +290,23 @@ jobs:
         env:
           PM: ${{ steps.detect.outputs.pm }}
         run: |
-          # The lockfile must match what Renovate wrote: install without updating it.
-          case "$PM" in
-            pnpm | yarn)
-              command -v corepack >/dev/null || npm install --global corepack
-              corepack enable "$PM"
-              ;;
-          esac
-          case "$PM" in
-            pnpm) pnpm install --frozen-lockfile ;;
-            yarn) yarn install --immutable ;;
-            npm)
-              if [ -f package-lock.json ]; then npm ci; else npm install; fi
-              ;;
-          esac
+          set -o pipefail
+          {
+            # The lockfile must match what Renovate wrote: install without updating it.
+            case "$PM" in
+              pnpm | yarn)
+                command -v corepack >/dev/null || npm install --global corepack
+                corepack enable "$PM"
+                ;;
+            esac
+            case "$PM" in
+              pnpm) pnpm install --frozen-lockfile ;;
+              yarn) yarn install --immutable ;;
+              npm)
+                if [ -f package-lock.json ]; then npm ci; else npm install; fi
+                ;;
+            esac
+          } 2>&1 | tee -a "$RUNNER_TEMP/test-output.log"
 
       - name: Run Node scripts
         if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.node == 'true'
@@ -308,8 +316,11 @@ jobs:
           SCRIPTS: ${{ inputs.node-scripts }}
           REQUIRE_TESTS: ${{ inputs.require-node-tests }}
         run: |
+          set -o pipefail
+          log="$RUNNER_TEMP/test-output.log"
           if [ "$REQUIRE_TESTS" = true ] && ! jq -e '.scripts.test' package.json >/dev/null; then
             echo "::error::package.json has no test script. Add one, or set require-node-tests to false."
+            echo "package.json has no test script, so the update was not tested." >>"$log"
             exit 1
           fi
           IFS=',' read -r -a scripts <<<"$SCRIPTS"
@@ -318,7 +329,7 @@ jobs:
             [ -n "$script" ] || continue
             if jq -e --arg s "$script" '.scripts[$s]' package.json >/dev/null; then
               echo "::group::$PM run $script"
-              "$PM" run "$script"
+              "$PM" run "$script" 2>&1 | tee -a "$log"
               echo "::endgroup::"
             else
               echo "::notice::No '$script' script, skipping."
@@ -356,8 +367,84 @@ jobs:
 
       - name: Report the failure
         if: failure()
+        # Best effort: the summary is always written, the issue needs issues: write.
+        continue-on-error: true
+        env:
+          HEAD_SHA: ${{ steps.merge.outputs.head }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           echo "The tests failed for \`$BRANCH\`, so no PR was opened. Renovate retries on the next run." >> "$GITHUB_STEP_SUMMARY"
+
+          log="$RUNNER_TEMP/test-output.log"
+          esc=$(printf '\033')
+          marker="<!-- renovate-autoupdate:$BRANCH -->"
+          body="$RUNNER_TEMP/failure-comment.md"
+          {
+            echo "$marker"
+            echo "### \`$BRANCH\` failed its tests"
+            echo
+            echo "Commit \`${HEAD_SHA:0:8}\`, [workflow run]($RUN_URL), $(date -u '+%Y-%m-%d %H:%M') UTC. No PR was opened."
+            echo
+            echo "<details open><summary>Test output, last lines</summary>"
+            echo
+            echo '`````'
+            if [ -s "$log" ]; then
+              sed -E "s/${esc}\[[0-9;]*[A-Za-z]//g" "$log" | tail -c 50000
+            else
+              echo "No output was captured. See the workflow run."
+            fi
+            echo '`````'
+            echo
+            echo "</details>"
+          } > "$body"
+
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$ISSUE_TITLE\" in:title" --json number,title \
+            --jq "[.[] | select(.title == \"$ISSUE_TITLE\")][0].number // empty")
+          if [ -z "$issue" ]; then
+            url=$(gh issue create --repo "$GITHUB_REPOSITORY" --title "$ISSUE_TITLE" \
+              --body "Updates that failed their tests, so no PR was opened. Each comment holds the output for one branch. Fix the cause on the branch or in the code. The workflow retries on every run, merges an update once it passes, and closes this issue when none fail.")
+            issue=${url##*/}
+          fi
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$issue/comments" --paginate \
+            --jq ".[] | select(.body | contains(\"$marker\")) | .id" | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@"$body" >/dev/null
+          else
+            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+          fi
+
+  tidy-failures:
+    name: Tidy the failure issue
+    needs: [renovate, test-and-merge]
+    if: always() && needs.renovate.result == 'success'
+    runs-on: ${{ fromJSON(startsWith(inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest', '{') && (inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest') || format('"{0}"', inputs.runner || vars.SHARED_ACTIONS_RUNNER || 'ubuntu-latest')) }}
+    timeout-minutes: 10
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Remove fixed updates and close the issue when none fail
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$ISSUE_TITLE\" in:title" --json number,title \
+            --jq "[.[] | select(.title == \"$ISSUE_TITLE\")][0].number // empty")
+          [ -n "$issue" ] || exit 0
+          branches=$(gh api --paginate "repos/$GITHUB_REPOSITORY/branches" --jq '.[].name')
+          remaining=0
+          while IFS=$'\t' read -r id branch; do
+            [ -n "$id" ] || continue
+            if printf '%s\n' "$branches" | grep -Fxq "$branch"; then
+              remaining=$((remaining + 1))
+            else
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$id"
+            fi
+          done < <(gh api "repos/$GITHUB_REPOSITORY/issues/$issue/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- renovate-autoupdate:")) | [.id, (.body | split("\n")[0] | sub("^<!-- renovate-autoupdate:"; "") | sub(" -->$"; ""))] | @tsv')
+          if [ "$remaining" -eq 0 ]; then
+            gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "Every dependency update now passes its tests."
+          fi
 
   release:
     name: Dispatch the release

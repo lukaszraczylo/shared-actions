@@ -106,7 +106,7 @@ Daily dependency updates for Go and npm/pnpm/yarn projects, built on Renovate. I
 
 1. Renovate upgrades everything that can be upgraded on branches named `deps-autoupdate/*` and opens no PR. All minor and patch updates (direct and indirect Go modules, npm, pnpm and yarn packages) go on `deps-autoupdate/batch`. Each major update gets its own branch.
 2. For each branch, one at a time, the workflow merges it into the default branch locally and runs the tests on that result: `go build` and `go test -race -cover` for Go, the `package.json` scripts for Node.
-3. If the tests pass, it opens a PR and squash-merges it. If they fail, no PR is ever opened. The failure shows in the run summary, and Renovate retries on the next run.
+3. If the tests pass, it opens a PR and squash-merges it. If they fail, no PR is opened. The test output goes into a comment on one sticky issue (see below), and Renovate retries on the next run.
 4. If anything merged and `release-workflow` is set, it dispatches the release once.
 
 ```yaml
@@ -120,6 +120,7 @@ on:
 permissions:
   actions: write       # only to dispatch release-workflow
   contents: write
+  issues: write        # only to report failing updates
   pull-requests: write
 
 jobs:
@@ -148,6 +149,8 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | `admin-merge` | `false` | Merge with `--admin`. The workflow token cannot bypass branch protection. |
 | `lfs` | `false` | Git LFS checkout |
 | `runner` | | Runner label or runner group, as in the other workflows |
+
+**Failing updates.** The last 50 KB of the test output goes into a comment on one issue titled "Dependency updates failing tests". Each failing branch has its own comment, updated on every run, and a header with the commit and the run link. When a branch passes and merges, its comment is removed. When no failing branch is left, the issue closes. The output is also in the run summary. Without `issues: write` the run still works, but the issue is skipped.
 
 **Branches run one at a time**, so each one is tested on top of the ones merged before it. A branch that conflicts with the default branch is skipped, and Renovate rebases it on the next run.
 
