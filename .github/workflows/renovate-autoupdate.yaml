@@ -104,6 +104,8 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: write
+      # Renovate reads the repository's issues when it starts. A private repo refuses that without this.
+      issues: read
       pull-requests: write
     outputs:
       branches: ${{ steps.list.outputs.branches }}
