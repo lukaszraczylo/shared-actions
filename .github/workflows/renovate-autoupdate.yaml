@@ -43,6 +43,11 @@ on:
         required: false
         type: string
         default: "lint,typecheck,test,build"
+      pnpm-version:
+        description: "pnpm version to use, for a repo whose package.json has no packageManager field. Empty uses the packageManager field, or the newest pnpm."
+        required: false
+        type: string
+        default: ""
       require-node-tests:
         description: "Fail when a Node project has no test script, so an untested update never merges"
         required: false
@@ -331,6 +336,7 @@ jobs:
         working-directory: ${{ inputs.node-working-directory }}
         env:
           PM: ${{ steps.detect.outputs.pm }}
+          PNPM_VERSION: ${{ inputs.pnpm-version }}
         run: |
           set -o pipefail
           {
@@ -341,6 +347,9 @@ jobs:
                 corepack enable "$PM"
                 ;;
             esac
+            if [ "$PM" = pnpm ] && [ -n "$PNPM_VERSION" ]; then
+              corepack prepare "pnpm@$PNPM_VERSION" --activate
+            fi
             case "$PM" in
               pnpm) pnpm install --frozen-lockfile ;;
               yarn) yarn install --immutable ;;

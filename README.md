@@ -119,6 +119,7 @@ jobs:
 | `node-version` | `22` | Node.js version |
 | `working-directory` | `.` | Directory that holds `package.json` |
 | `scripts` | `lint,typecheck,test,build` | Scripts to run in order. A missing script is skipped. |
+| `pnpm-version` | | pnpm version for a repo with no `packageManager` field. Empty uses the field, or the newest pnpm. |
 | `require-tests` | `false` | Fail when there is no `test` script |
 | `lfs` | `false` | Git LFS checkout |
 | `runner` | | Runner label or runner group, as in the other workflows |
@@ -182,6 +183,7 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | `node` | `true` | Update and test the Node project. Turn off for a repo with no frontend to test. |
 | `node-working-directory` | `.` | Directory that holds `package.json`. Only this project is updated and tested. |
 | `node-scripts` | `lint,typecheck,test,build` | Scripts to run in order. A missing script is skipped. |
+| `pnpm-version` | | pnpm version for a repo with no `packageManager` field. Empty uses the field, or the newest pnpm. |
 | `require-node-tests` | `true` | Fail when there is no `test` script, so an untested update never merges |
 | `major-updates` | `separate` | `separate`: each major gets its own branch, tested and merged on its own. `batch`: majors join the batch. `ignore`: skip majors. |
 | `minimum-release-age` | `2 days` | Skip releases younger than this |
