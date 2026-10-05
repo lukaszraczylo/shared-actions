@@ -337,7 +337,21 @@ jobs:
             echo "::notice::$BRANCH is already in the default branch."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           elif git merge --no-ff --no-commit FETCH_HEAD; then
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            # A lockfile that both sides changed merges as text and can be broken. Renovate regenerates it on the next run.
+            base=$(git merge-base HEAD FETCH_HEAD)
+            stale=""
+            for lock in pnpm-lock.yaml package-lock.json yarn.lock; do
+              for f in $(git ls-tree -r --name-only FETCH_HEAD | grep -E "(^|/)${lock//./\\.}$"); do
+                if ! git diff --quiet "$base" HEAD -- "$f" && ! git diff --quiet "$base" FETCH_HEAD -- "$f"; then stale="$stale $f"; fi
+              done
+            done
+            if [ -n "$stale" ]; then
+              git merge --abort
+              echo "::warning::$BRANCH and the default branch both changed${stale}. Renovate rebases it on the next run."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+            fi
           else
             git merge --abort
             echo "::warning::$BRANCH conflicts with the default branch. Renovate rebases it on the next run."
