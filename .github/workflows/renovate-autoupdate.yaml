@@ -420,11 +420,29 @@ jobs:
             echo "pm=$pm"
           } >> "$GITHUB_OUTPUT"
 
+      # The merged go.mod can need a newer Go than the input allows, because a dependency update raises its go directive.
+      - name: Pick the Go version
+        id: goversion
+        if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.go == 'true'
+        env:
+          GO_VERSION_INPUT: ${{ inputs.go-version }}
+          GO_DIR: ${{ inputs.go-working-directory }}
+        run: |
+          want=$(awk '$1=="go"{print $2; exit}' "$GO_DIR/go.mod")
+          floor=$(printf '%s' "$GO_VERSION_INPUT" | sed -E 's/^[^0-9]*//' | cut -d. -f1,2)
+          need=$(printf '%s' "$want" | cut -d. -f1,2)
+          version=$GO_VERSION_INPUT
+          if [ -n "$need" ] && [ "$(printf '%s\n%s\n' "$need" "${floor:-0}" | sort -V | tail -n 1)" != "${floor:-0}" ]; then
+            version=">=$want"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "::notice::Go $version (input '$GO_VERSION_INPUT', go.mod '$want')"
+
       - name: Setup Go
         if: steps.merge.outputs.skip != 'true' && steps.detect.outputs.go == 'true'
         uses: actions/setup-go@v7
         with:
-          go-version: ${{ inputs.go-version }}
+          go-version: ${{ steps.goversion.outputs.version }}
           check-latest: true
           cache: true
           cache-dependency-path: ${{ inputs.go-working-directory }}/go.sum
@@ -443,6 +461,7 @@ jobs:
         working-directory: ${{ inputs.go-working-directory }}
         env:
           GO_TEST_COMMAND: ${{ inputs.go-test-command }}
+          GOTOOLCHAIN: auto
         run: |
           set -o pipefail
           {
