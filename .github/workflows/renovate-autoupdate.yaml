@@ -43,6 +43,11 @@ on:
         required: false
         type: string
         default: ""
+      build-tags:
+        description: "Build tags to pass to go build and go test (e.g., 'fts5'). The default commands then run with CGO_ENABLED=1. Ignored when go-test-command is set."
+        required: false
+        type: string
+        default: ""
       node:
         description: "Update and test the Node project. Turn off for a repo with no frontend to test."
         required: false
@@ -461,6 +466,7 @@ jobs:
         working-directory: ${{ inputs.go-working-directory }}
         env:
           GO_TEST_COMMAND: ${{ inputs.go-test-command }}
+          TAGS: ${{ inputs.build-tags }}
           GOTOOLCHAIN: auto
         run: |
           set -o pipefail
@@ -468,6 +474,10 @@ jobs:
             go mod verify
             if [ -n "$GO_TEST_COMMAND" ]; then
               bash -c "$GO_TEST_COMMAND"
+            elif [ -n "$TAGS" ]; then
+              export CGO_ENABLED=1
+              go build -tags "$TAGS" ./...
+              go test -tags "$TAGS" -race -cover ./...
             else
               go build ./...
               go test -race -cover ./...
