@@ -188,6 +188,7 @@ The workflow finds `go.mod` and `package.json` itself and tests what exists. A r
 | `go-mod-tidy` | `true` | Run `go mod tidy` after a Go update. Turn it off for an Encore app, where tidy prunes `go.sum` entries the build needs. |
 | `go-prepare-command` | | Shell commands to run before the Go tests, for example installing a CLI. Append a tool directory to `$GITHUB_PATH` to put it on `PATH`. |
 | `go-test-command` | | Replaces the default `go build` and `go test`, for example `encore test ./...` for an Encore app. |
+| `build-tags` | | Build tags for the default `go build` and `go test`, for example `fts5`. Also sets `CGO_ENABLED=1`. Ignored when `go-test-command` is set. |
 | `node-version` | `22` | Node.js version |
 | `node` | `true` | Update and test the Node project. Turn off for a repo with no frontend to test. |
 | `node-working-directory` | `.` | Directory that holds `package.json`. Only this project is updated and tested. With `node-workspace`, the directory that holds the workspace files. |
