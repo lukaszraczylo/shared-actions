@@ -32,6 +32,7 @@ on:
 
 # Caller must declare these permissions:
 # permissions:
+#   actions: read
 #   contents: read
 #   pull-requests: write
 #   security-events: write
@@ -260,6 +261,8 @@ jobs:
     if: needs.pre.outputs.skip != 'true'
     timeout-minutes: 45
     permissions:
+      # codeql-action analyze reads the workflow run; private repos need this.
+      actions: read
       contents: read
       security-events: write
     steps:
